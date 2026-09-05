@@ -31,3 +31,6 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# local dev artifacts
+dev-server.log

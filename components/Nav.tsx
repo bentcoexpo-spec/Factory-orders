@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 
 const links = [
   { href: '/clients', label: 'Клиенты' },
@@ -20,6 +21,14 @@ function isActive(href: string, pathname: string) {
 
 export default function Nav() {
   const pathname = usePathname() ?? '';
+  const router = useRouter();
+
+  if (pathname === '/login') return null;
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.replace('/login');
+  }
 
   return (
     <header className="border-b border-slate-200 bg-white">
@@ -40,6 +49,12 @@ export default function Nav() {
             </Link>
           ))}
         </nav>
+        <button
+          onClick={handleLogout}
+          className="ml-auto rounded-md px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100"
+        >
+          Выйти
+        </button>
       </div>
     </header>
   );

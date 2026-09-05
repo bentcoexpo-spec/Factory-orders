@@ -50,11 +50,19 @@ alter table products enable row level security;
 alter table orders enable row level security;
 alter table order_items enable row level security;
 
--- Внимание: политики ниже открывают полный доступ по anon-ключу (без входа в систему).
--- Это ожидаемо для внутреннего инструмента фабрики без публичного доступа.
--- Если приложение станет доступно извне, добавьте Supabase Auth и замените
--- политики на проверки auth.uid()/auth.role().
-create policy "clients_all" on clients for all using (true) with check (true);
-create policy "products_all" on products for all using (true) with check (true);
-create policy "orders_all" on orders for all using (true) with check (true);
-create policy "order_items_all" on order_items for all using (true) with check (true);
+-- Доступ разрешён только авторизованным пользователям Supabase Auth.
+-- anon-ключ (NEXT_PUBLIC_SUPABASE_ANON_KEY) виден в браузере любому
+-- посетителю сайта, поэтому без этого ограничения кто угодно смог бы
+-- напрямую читать/менять/удалять все данные в обход приложения.
+-- Перед использованием создайте пользователя в Supabase Dashboard
+-- (Authentication → Users → Add user) и отключите публичную
+-- регистрацию (Authentication → Providers → Email → Allow new users
+-- to sign up: выключено).
+create policy "clients_authenticated" on clients
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "products_authenticated" on products
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "orders_authenticated" on orders
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "order_items_authenticated" on order_items
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
