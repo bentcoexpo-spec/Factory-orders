@@ -47,7 +47,7 @@ export default function OrdersPage() {
           <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Заказы</h1>
           <p className="mt-1 text-sm text-slate-500">Все заказы фабрики</p>
         </div>
-        {role === 'ceo' && (
+        {role && (
           <Link
             href="/orders/new"
             className="rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-500"

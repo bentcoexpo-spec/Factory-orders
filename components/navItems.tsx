@@ -55,7 +55,7 @@ export function IconChart({ className }: { className?: string }) {
 // Полный список — для десктопного сайдбара.
 export const NAV_ITEMS: NavItem[] = [
   { href: '/orders', label: 'Заказы', shortLabel: 'Заказы', icon: IconOrders, roles: ['ceo', 'kladovshik'] },
-  { href: '/orders/new', label: 'Новый заказ', shortLabel: 'Новый', icon: IconPlus, roles: ['ceo'] },
+  { href: '/orders/new', label: 'Новый заказ', shortLabel: 'Новый', icon: IconPlus, roles: ['ceo', 'kladovshik'] },
   { href: '/clients', label: 'Клиенты', shortLabel: 'Клиенты', icon: IconUsers, roles: ['ceo'] },
   { href: '/products', label: 'Склад', shortLabel: 'Склад', icon: IconBox, roles: ['ceo', 'kladovshik'] },
   { href: '/analytics', label: 'Аналитика', shortLabel: 'Аналитика', icon: IconChart, roles: ['ceo'] },

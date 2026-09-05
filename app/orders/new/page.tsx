@@ -1,96 +1,120 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useRef, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { Client, Product } from '@/lib/types';
+import { Client, ProductVariant, stockStatus, variantLabel } from '@/lib/types';
 import { formatMoney } from '@/lib/format';
+import { useRole } from '@/components/RoleProvider';
 import RequireRole from '@/components/RequireRole';
+import ClientPicker from '@/components/ClientPicker';
 
 interface LineItem {
   key: string;
-  product_id: string;
+  variant: ProductVariant;
   quantity: number;
   price: number;
 }
 
-function emptyLine(): LineItem {
-  return { key: crypto.randomUUID(), product_id: '', quantity: 1, price: 0 };
+function StockBadge({ quantity }: { quantity: number }) {
+  const status = stockStatus(quantity);
+  if (status === 'out') return <span className="text-xs font-semibold text-red-600">Нет в наличии</span>;
+  if (status === 'low') return <span className="text-xs font-semibold text-amber-600">Мало ({quantity})</span>;
+  return <span className="text-xs text-slate-400">Остаток {quantity}</span>;
 }
 
 function NewOrderForm() {
   const router = useRouter();
-  const [clients, setClients] = useState<Client[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [clientId, setClientId] = useState('');
+  const { role } = useRole();
+  const isCeo = role === 'ceo';
+
+  const [client, setClient] = useState<Client | null>(null);
   const [comment, setComment] = useState('');
-  const [items, setItems] = useState<LineItem[]>([emptyLine()]);
+  const [items, setItems] = useState<LineItem[]>([]);
+
+  const [productQuery, setProductQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [results, setResults] = useState<ProductVariant[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function load() {
-      const [{ data: clientsData }, { data: productsData }] = await Promise.all([
-        supabase.from('clients').select('*').order('name'),
-        supabase.from('products_view').select('*').order('name'),
-      ]);
-      setClients(clientsData ?? []);
-      setProducts((productsData as unknown as Product[]) ?? []);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = productQuery.trim();
+    if (q.length < 2) {
+      setResults([]);
+      return;
     }
-    load();
-  }, []);
+    setSearching(true);
+    debounceRef.current = setTimeout(async () => {
+      const { data, error } = await supabase
+        .from('product_variants_view')
+        .select('*')
+        .ilike('product_name', `%${q}%`)
+        .order('product_name')
+        .limit(50);
+      if (!error) setResults((data as unknown as ProductVariant[]) ?? []);
+      setSearching(false);
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [productQuery]);
 
-  function updateItem(key: string, patch: Partial<LineItem>) {
-    setItems((prev) => prev.map((it) => (it.key === key ? { ...it, ...patch } : it)));
+  function addVariant(variant: ProductVariant) {
+    setItems((prev) => {
+      const existing = prev.find((it) => it.variant.id === variant.id);
+      if (existing) {
+        return prev.map((it) => (it.variant.id === variant.id ? { ...it, quantity: it.quantity + 1 } : it));
+      }
+      return [...prev, { key: variant.id, variant, quantity: 1, price: variant.price ?? 0 }];
+    });
+    setProductQuery('');
+    setResults([]);
   }
 
-  function handleProductChange(key: string, productId: string) {
-    const product = products.find((p) => p.id === productId);
-    updateItem(key, { product_id: productId, price: product?.price ?? 0 });
+  function updateQuantity(key: string, quantity: number) {
+    setItems((prev) => prev.map((it) => (it.key === key ? { ...it, quantity } : it)));
   }
 
-  function addLine() {
-    setItems((prev) => [...prev, emptyLine()]);
+  function updatePrice(key: string, price: number) {
+    setItems((prev) => prev.map((it) => (it.key === key ? { ...it, price } : it)));
   }
 
-  function removeLine(key: string) {
-    setItems((prev) => (prev.length > 1 ? prev.filter((it) => it.key !== key) : prev));
+  function removeItem(key: string) {
+    setItems((prev) => prev.filter((it) => it.key !== key));
   }
 
   const total = items.reduce((sum, it) => sum + it.quantity * it.price, 0);
 
-  function stockFor(productId: string) {
-    return products.find((p) => p.id === productId)?.stock_quantity ?? null;
-  }
-
-  const hasStockIssue = items.some((it) => {
-    if (!it.product_id) return false;
-    const stock = stockFor(it.product_id);
-    return stock !== null && it.quantity > stock;
-  });
+  const groupedResults = Array.from(
+    results.reduce((map, v) => {
+      const list = map.get(v.product_name) ?? [];
+      list.push(v);
+      map.set(v.product_name, list);
+      return map;
+    }, new Map<string, ProductVariant[]>())
+  );
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
 
-    if (!clientId) {
-      setError('Выберите клиента');
+    if (!client) {
+      setError('Выберите или добавьте клиента');
       return;
     }
-    const validItems = items.filter((it) => it.product_id && it.quantity > 0);
-    if (validItems.length === 0) {
+    if (items.length === 0) {
       setError('Добавьте хотя бы один товар');
-      return;
-    }
-    if (hasStockIssue) {
-      setError('Количество некоторых товаров превышает остаток на складе');
       return;
     }
 
     setSaving(true);
     const { data: order, error: orderError } = await supabase
       .from('orders_view')
-      .insert({ client_id: clientId, status: 'new', total, comment: comment.trim() || null })
+      .insert({ client_id: client.id, status: 'new', comment: comment.trim() || null })
       .select()
       .single();
 
@@ -100,14 +124,13 @@ function NewOrderForm() {
       return;
     }
 
-    const { error: itemsError } = await supabase.from('order_items_view').insert(
-      validItems.map((it) => ({
-        order_id: order.id,
-        product_id: it.product_id,
-        quantity: it.quantity,
-        price: it.price,
-      }))
+    const payload = items.map((it) =>
+      isCeo
+        ? { order_id: order.id, variant_id: it.variant.id, quantity: it.quantity, price: it.price }
+        : { order_id: order.id, variant_id: it.variant.id, quantity: it.quantity }
     );
+
+    const { error: itemsError } = await supabase.from('order_items_view').insert(payload);
 
     setSaving(false);
 
@@ -127,25 +150,10 @@ function NewOrderForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
+        <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
           <div>
             <label className="mb-1 block text-xs font-medium uppercase text-slate-500">Клиент *</label>
-            <select
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              required
-            >
-              <option value="">Выберите клиента</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            {clients.length === 0 && (
-              <p className="mt-1 text-xs text-amber-600">Сначала добавьте клиента на странице «Клиенты»</p>
-            )}
+            <ClientPicker value={client} onChange={setClient} />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium uppercase text-slate-500">Комментарий</label>
@@ -159,55 +167,83 @@ function NewOrderForm() {
         </div>
 
         <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-700">Товары</h2>
-            <button
-              type="button"
-              onClick={addLine}
-              className="rounded-md px-2 py-1.5 text-sm font-medium text-indigo-600 active:bg-indigo-50 sm:text-xs sm:hover:underline"
-            >
-              + Добавить товар
-            </button>
-          </div>
+          <h2 className="mb-3 text-sm font-semibold text-slate-700">Добавить товар</h2>
+          <input
+            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+            placeholder="Название товара"
+            value={productQuery}
+            onChange={(e) => setProductQuery(e.target.value)}
+          />
 
-          {/* Мобильная версия — карточка на позицию с подписями полей */}
-          <div className="space-y-3 sm:hidden">
-            {items.map((item, index) => {
-              const subtotal = item.quantity * item.price;
-              const stock = stockFor(item.product_id);
-              const overStock = stock !== null && item.quantity > stock;
+          {searching && <p className="mt-2 text-xs text-slate-400">Поиск…</p>}
+
+          {!searching && productQuery.trim().length >= 2 && groupedResults.length === 0 && (
+            <p className="mt-2 text-xs text-slate-400">Ничего не найдено</p>
+          )}
+
+          {groupedResults.length > 0 && (
+            <div className="mt-3 space-y-3">
+              {groupedResults.map(([productName, variants]) => (
+                <div key={productName}>
+                  <p className="mb-1.5 text-sm font-medium text-slate-700">{productName}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {variants.map((v) => {
+                      const label = variantLabel(v) ?? 'Без варианта';
+                      const status = stockStatus(v.stock_quantity);
+                      return (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => addVariant(v)}
+                          className={`rounded-md border px-3 py-2.5 text-left text-sm ${
+                            status === 'out'
+                              ? 'border-red-300 bg-red-50'
+                              : status === 'low'
+                                ? 'border-amber-300 bg-amber-50'
+                                : 'border-slate-200 bg-white'
+                          }`}
+                        >
+                          <span className="block font-medium text-slate-800">{label}</span>
+                          <StockBadge quantity={v.stock_quantity} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <h2 className="mb-3 text-sm font-semibold text-slate-700">Товары в заказе</h2>
+
+          {items.length === 0 && <p className="text-sm text-slate-400">Пока ничего не добавлено</p>}
+
+          <div className="space-y-3">
+            {items.map((it) => {
+              const label = variantLabel(it.variant);
+              const overStock = it.quantity > it.variant.stock_quantity;
               return (
-                <div key={item.key} className="space-y-3 rounded-lg border border-slate-200 p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-400">Позиция {index + 1}</span>
-                    {items.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeLine(item.key)}
-                        className="rounded-md px-2 py-1 text-sm font-medium text-red-600 active:bg-red-50"
-                      >
-                        Убрать
-                      </button>
-                    )}
+                <div key={it.key} className="space-y-2 rounded-md border border-slate-100 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">
+                        {it.variant.product_name}
+                        {label && <span className="text-slate-400"> · {label}</span>}
+                      </p>
+                      <StockBadge quantity={it.variant.stock_quantity} />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeItem(it.key)}
+                      className="rounded-md px-2 py-1 text-sm font-medium text-red-600 active:bg-red-50"
+                    >
+                      Убрать
+                    </button>
                   </div>
 
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-medium text-slate-500">Товар</span>
-                    <select
-                      className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-                      value={item.product_id}
-                      onChange={(e) => handleProductChange(item.key, e.target.value)}
-                    >
-                      <option value="">Выберите товар</option>
-                      {products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} (остаток: {p.stock_quantity})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className={`grid gap-2 ${isCeo ? 'grid-cols-2' : 'grid-cols-1'}`}>
                     <label className="block">
                       <span className="mb-1 block text-xs font-medium text-slate-500">Количество</span>
                       <input
@@ -218,116 +254,59 @@ function NewOrderForm() {
                         className={`w-full rounded-md border px-3 py-2.5 text-base ${
                           overStock ? 'border-red-400 text-red-600' : 'border-slate-300'
                         }`}
-                        value={item.quantity}
-                        onChange={(e) => updateItem(item.key, { quantity: Number(e.target.value) })}
+                        value={it.quantity}
+                        onChange={(e) => updateQuantity(it.key, Number(e.target.value))}
                       />
                     </label>
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-medium text-slate-500">Цена за ед.</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        inputMode="decimal"
-                        className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-                        value={item.price}
-                        onChange={(e) => updateItem(item.key, { price: Number(e.target.value) })}
-                      />
-                    </label>
+                    {isCeo && (
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-medium text-slate-500">Цена за ед.</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          inputMode="decimal"
+                          className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                          value={it.price}
+                          onChange={(e) => updatePrice(it.key, Number(e.target.value))}
+                        />
+                      </label>
+                    )}
                   </div>
 
                   {overStock && (
-                    <p className="text-xs text-red-500">Недостаточно товара на складе — доступно только {stock}.</p>
-                  )}
-
-                  <div className="flex items-center justify-between border-t border-slate-100 pt-2">
-                    <span className="text-xs text-slate-500">Сумма по позиции</span>
-                    <span className="text-sm font-semibold text-slate-800">{formatMoney(subtotal)}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Десктопная версия — компактная строка */}
-          <div className="hidden space-y-3 sm:block">
-            {items.map((item) => {
-              const subtotal = item.quantity * item.price;
-              const stock = stockFor(item.product_id);
-              const overStock = stock !== null && item.quantity > stock;
-              return (
-                <div
-                  key={item.key}
-                  className="grid grid-cols-12 items-center gap-2 rounded-md border border-slate-100 p-3"
-                >
-                  <select
-                    className="col-span-4 rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    value={item.product_id}
-                    onChange={(e) => handleProductChange(item.key, e.target.value)}
-                  >
-                    <option value="">Выберите товар</option>
-                    {products.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} (остаток: {p.stock_quantity})
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    min={0}
-                    step="1"
-                    className={`col-span-2 rounded-md border px-3 py-2 text-sm ${
-                      overStock ? 'border-red-400 text-red-600' : 'border-slate-300'
-                    }`}
-                    placeholder="Кол-во"
-                    value={item.quantity}
-                    onChange={(e) => updateItem(item.key, { quantity: Number(e.target.value) })}
-                  />
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    placeholder="Цена"
-                    value={item.price}
-                    onChange={(e) => updateItem(item.key, { price: Number(e.target.value) })}
-                  />
-                  <div className="col-span-2 text-sm font-medium text-slate-700">{formatMoney(subtotal)}</div>
-                  <div className="col-span-1 text-xs text-slate-400">
-                    {stock !== null && <span className={overStock ? 'text-red-500' : ''}>ост. {stock}</span>}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeLine(item.key)}
-                    className="col-span-1 text-xs font-medium text-red-600 hover:underline"
-                  >
-                    Убрать
-                  </button>
-                  {overStock && (
-                    <p className="col-span-12 text-xs text-red-500">
-                      Недостаточно товара на складе — доступно только {stock}.
+                    <p className="text-xs font-medium text-red-600">
+                      Запрошено больше, чем на складе (доступно {it.variant.stock_quantity}) — заказ можно создать
+                      под будущую поставку.
                     </p>
                   )}
+
+                  {isCeo && (
+                    <div className="flex items-center justify-between border-t border-slate-100 pt-2">
+                      <span className="text-xs text-slate-500">Сумма по позиции</span>
+                      <span className="text-sm font-semibold text-slate-800">
+                        {formatMoney(it.quantity * it.price)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
 
-          {products.length === 0 && (
-            <p className="mt-2 text-xs text-amber-600">Сначала добавьте товары на странице «Склад»</p>
+          {isCeo && items.length > 0 && (
+            <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
+              <span className="text-sm text-slate-500">Итого:</span>
+              <span className="text-lg font-semibold text-slate-900">{formatMoney(total)}</span>
+            </div>
           )}
-
-          <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
-            <span className="text-sm text-slate-500">Итого:</span>
-            <span className="text-lg font-semibold text-slate-900">{formatMoney(total)}</span>
-          </div>
         </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <button
           type="submit"
-          disabled={saving || hasStockIssue}
+          disabled={saving}
           className="w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
         >
           {saving ? 'Создание…' : 'Создать заказ'}
@@ -339,7 +318,7 @@ function NewOrderForm() {
 
 export default function NewOrderPage() {
   return (
-    <RequireRole roles={['ceo']}>
+    <RequireRole roles={['ceo', 'kladovshik']}>
       <NewOrderForm />
     </RequireRole>
   );

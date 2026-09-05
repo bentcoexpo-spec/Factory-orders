@@ -17,9 +17,14 @@ export interface Client {
   created_at: string;
 }
 
-export interface Product {
+// Ряд из product_variants_view: одна комбинация цвет+размер конкретного
+// товара. Цена общая на весь товар (лежит в products), видна только CEO.
+export interface ProductVariant {
   id: string;
-  name: string;
+  product_id: string;
+  product_name: string;
+  color: string | null;
+  size: string | null;
   sku: string | null;
   unit: string;
   stock_quantity: number;
@@ -27,11 +32,26 @@ export interface Product {
   created_at: string;
 }
 
+export const LOW_STOCK_THRESHOLD = 30;
+
+export function stockStatus(quantity: number): 'out' | 'low' | 'ok' {
+  if (quantity <= 0) return 'out';
+  if (quantity <= LOW_STOCK_THRESHOLD) return 'low';
+  return 'ok';
+}
+
+export function variantLabel(variant: { color: string | null; size: string | null }) {
+  const parts = [variant.size, variant.color].filter(Boolean);
+  return parts.length > 0 ? parts.join(', ') : null;
+}
+
 export interface OrderItemView {
   id: string;
   order_id: string;
-  product_id: string;
+  variant_id: string;
   product_name: string;
+  color: string | null;
+  size: string | null;
   product_unit: string;
   quantity: number;
   price: number | null;
@@ -53,14 +73,20 @@ export interface OrderView {
 }
 
 // Полная (немаскированная) форма заказа для аналитики — доступна
-// только CEO, т.к. таблицы orders/order_items/products/clients
-// напрямую разрешены только его роли (см. supabase/003_roles_and_stock.sql).
+// только CEO, т.к. таблицы orders/order_items/product_variants/products/
+// clients напрямую разрешены только его роли (см. supabase/*.sql).
 export interface AnalyticsOrderItem {
   id: string;
-  product_id: string;
+  variant_id: string;
   quantity: number;
   price: number;
-  product?: { id: string; name: string; unit: string } | null;
+  variant?: {
+    id: string;
+    color: string | null;
+    size: string | null;
+    unit: string;
+    product?: { id: string; name: string } | null;
+  } | null;
 }
 
 export interface AnalyticsOrder {

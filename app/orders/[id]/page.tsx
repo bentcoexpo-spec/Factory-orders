@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { OrderView, OrderItemView, OrderStatus, ORDER_STATUSES } from '@/lib/types';
+import { OrderView, OrderItemView, OrderStatus, ORDER_STATUSES, variantLabel } from '@/lib/types';
 import { formatDate, formatMoney } from '@/lib/format';
 import StatusBadge from '@/components/StatusBadge';
 import { useRole } from '@/components/RoleProvider';
@@ -104,20 +104,26 @@ export default function OrderDetailPage() {
       {/* Мобильная версия — карточки товаров */}
       <div className="space-y-2 sm:hidden">
         <h2 className="text-sm font-semibold text-slate-700">Товары</h2>
-        {items.map((item) => (
-          <div key={item.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3">
-            <div>
-              <p className="text-sm font-medium text-slate-800">{item.product_name}</p>
-              <p className="text-xs text-slate-500">
-                {item.quantity} {item.product_unit}
-                {showTotal && ` × ${formatMoney(item.price ?? 0)}`}
-              </p>
+        {items.map((item) => {
+          const label = variantLabel(item);
+          return (
+            <div key={item.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3">
+              <div>
+                <p className="text-sm font-medium text-slate-800">
+                  {item.product_name}
+                  {label && <span className="text-slate-400"> · {label}</span>}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {item.quantity} {item.product_unit}
+                  {showTotal && ` × ${formatMoney(item.price ?? 0)}`}
+                </p>
+              </div>
+              {showTotal && (
+                <p className="text-sm font-medium text-slate-700">{formatMoney((item.price ?? 0) * item.quantity)}</p>
+              )}
             </div>
-            {showTotal && (
-              <p className="text-sm font-medium text-slate-700">{formatMoney((item.price ?? 0) * item.quantity)}</p>
-            )}
-          </div>
-        ))}
+          );
+        })}
         {showTotal && (
           <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-sm font-semibold text-slate-700">Итого</p>
@@ -138,18 +144,24 @@ export default function OrderDetailPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {items.map((item) => (
-              <tr key={item.id}>
-                <td className="px-4 py-3 font-medium text-slate-800">{item.product_name}</td>
-                <td className="px-4 py-3 text-slate-600">
-                  {item.quantity} {item.product_unit}
-                </td>
-                {showTotal && <td className="px-4 py-3 text-slate-600">{formatMoney(item.price ?? 0)}</td>}
-                {showTotal && (
-                  <td className="px-4 py-3 text-slate-600">{formatMoney((item.price ?? 0) * item.quantity)}</td>
-                )}
-              </tr>
-            ))}
+            {items.map((item) => {
+              const label = variantLabel(item);
+              return (
+                <tr key={item.id}>
+                  <td className="px-4 py-3 font-medium text-slate-800">
+                    {item.product_name}
+                    {label && <span className="text-slate-400"> · {label}</span>}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {item.quantity} {item.product_unit}
+                  </td>
+                  {showTotal && <td className="px-4 py-3 text-slate-600">{formatMoney(item.price ?? 0)}</td>}
+                  {showTotal && (
+                    <td className="px-4 py-3 text-slate-600">{formatMoney((item.price ?? 0) * item.quantity)}</td>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
           {showTotal && (
             <tfoot>

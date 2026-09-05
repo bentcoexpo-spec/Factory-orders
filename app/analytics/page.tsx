@@ -14,7 +14,7 @@ function AnalyticsContent() {
     async function load() {
       const { data } = await supabase
         .from('orders')
-        .select('*, client:clients(*), items:order_items(*, product:products(*))')
+        .select('*, client:clients(*), items:order_items(*, variant:product_variants(*, product:products(*)))')
         .order('created_at', { ascending: false });
       setOrders((data as unknown as AnalyticsOrder[]) ?? []);
       setLoading(false);
@@ -54,9 +54,12 @@ function AnalyticsContent() {
     const productQty = new Map<string, { name: string; qty: number }>();
     orders.forEach((o) => {
       o.items?.forEach((it) => {
-        const prev = productQty.get(it.product_id) ?? { name: it.product?.name ?? '—', qty: 0 };
+        const variantSuffix = [it.variant?.size, it.variant?.color].filter(Boolean).join(', ');
+        const label = it.variant?.product?.name ?? '—';
+        const name = variantSuffix ? `${label} (${variantSuffix})` : label;
+        const prev = productQty.get(it.variant_id) ?? { name, qty: 0 };
         prev.qty += it.quantity;
-        productQty.set(it.product_id, prev);
+        productQty.set(it.variant_id, prev);
       });
     });
     const topProducts = Array.from(productQty.values()).sort((a, b) => b.qty - a.qty).slice(0, 5);
