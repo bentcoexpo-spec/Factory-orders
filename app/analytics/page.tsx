@@ -74,7 +74,7 @@ function AnalyticsContent() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Аналитика</h1>
+        <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Аналитика</h1>
         <p className="mt-1 text-sm text-slate-500">Сводка по заказам фабрики</p>
       </div>
 

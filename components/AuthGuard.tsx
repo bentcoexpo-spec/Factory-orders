@@ -6,6 +6,8 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import RoleProvider from './RoleProvider';
 import Sidebar from './Sidebar';
+import MobileHeader from './MobileHeader';
+import MobileBottomNav from './MobileBottomNav';
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -43,9 +45,11 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     <RoleProvider>
       <div className="flex min-h-screen bg-slate-50">
         <Sidebar />
+        <MobileHeader />
         <div className="min-w-0 flex-1">
-          <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+          <main className="mx-auto max-w-6xl px-4 pb-24 pt-[4.5rem] sm:px-6 sm:pb-8 sm:pt-8">{children}</main>
         </div>
+        <MobileBottomNav />
       </div>
     </RoleProvider>
   );
