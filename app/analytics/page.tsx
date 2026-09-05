@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Order, ORDER_STATUSES } from '@/lib/types';
+import { AnalyticsOrder, ORDER_STATUSES } from '@/lib/types';
 import { formatMoney } from '@/lib/format';
+import RequireRole from '@/components/RequireRole';
 
-export default function AnalyticsPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
+function AnalyticsContent() {
+  const [orders, setOrders] = useState<AnalyticsOrder[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -15,7 +16,7 @@ export default function AnalyticsPage() {
         .from('orders')
         .select('*, client:clients(*), items:order_items(*, product:products(*))')
         .order('created_at', { ascending: false });
-      setOrders((data as unknown as Order[]) ?? []);
+      setOrders((data as unknown as AnalyticsOrder[]) ?? []);
       setLoading(false);
     }
     load();
@@ -145,6 +146,14 @@ export default function AnalyticsPage() {
         </Panel>
       </div>
     </div>
+  );
+}
+
+export default function AnalyticsPage() {
+  return (
+    <RequireRole roles={['ceo']}>
+      <AnalyticsContent />
+    </RequireRole>
   );
 }
 

@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { Order, OrderStatus, ORDER_STATUSES } from '@/lib/types';
+import { OrderView, OrderStatus, ORDER_STATUSES } from '@/lib/types';
 import { formatDate, formatMoney } from '@/lib/format';
 import StatusBadge from '@/components/StatusBadge';
+import { useRole } from '@/components/RoleProvider';
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
+  const { role } = useRole();
+  const [orders, setOrders] = useState<OrderView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<OrderStatus | 'all'>('all');
@@ -16,11 +18,11 @@ export default function OrdersPage() {
   async function loadOrders() {
     setLoading(true);
     const { data, error } = await supabase
-      .from('orders')
-      .select('*, client:clients(*)')
+      .from('orders_view')
+      .select('*')
       .order('created_at', { ascending: false });
     if (error) setError(error.message);
-    else setOrders((data as unknown as Order[]) ?? []);
+    else setOrders((data as unknown as OrderView[]) ?? []);
     setLoading(false);
   }
 
@@ -29,12 +31,14 @@ export default function OrdersPage() {
   }, []);
 
   async function handleStatusChange(id: string, status: OrderStatus) {
-    const { error } = await supabase.from('orders').update({ status }).eq('id', id);
+    setError(null);
+    const { error } = await supabase.from('orders_view').update({ status }).eq('id', id);
     if (error) setError(error.message);
     else loadOrders();
   }
 
   const visibleOrders = filter === 'all' ? orders : orders.filter((o) => o.status === filter);
+  const showTotals = orders.some((o) => o.total !== null);
 
   return (
     <div className="space-y-6">
@@ -43,19 +47,21 @@ export default function OrdersPage() {
           <h1 className="text-2xl font-semibold text-slate-900">Заказы</h1>
           <p className="mt-1 text-sm text-slate-500">Все заказы фабрики</p>
         </div>
-        <Link
-          href="/orders/new"
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
-        >
-          + Новый заказ
-        </Link>
+        {role === 'ceo' && (
+          <Link
+            href="/orders/new"
+            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+          >
+            + Новый заказ
+          </Link>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => setFilter('all')}
           className={`rounded-full px-3 py-1 text-xs font-medium ${
-            filter === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'
+            filter === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
           }`}
         >
           Все ({orders.length})
@@ -65,7 +71,7 @@ export default function OrdersPage() {
             key={s.value}
             onClick={() => setFilter(s.value)}
             className={`rounded-full px-3 py-1 text-xs font-medium ${
-              filter === s.value ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'
+              filter === s.value ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
             }`}
           >
             {s.label} ({orders.filter((o) => o.status === s.value).length})
@@ -77,10 +83,10 @@ export default function OrdersPage() {
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+          <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-400">
             <tr>
               <th className="px-4 py-3">Клиент</th>
-              <th className="px-4 py-3">Сумма</th>
+              {showTotals && <th className="px-4 py-3">Сумма</th>}
               <th className="px-4 py-3">Статус</th>
               <th className="px-4 py-3">Создан</th>
               <th className="px-4 py-3" />
@@ -102,13 +108,15 @@ export default function OrdersPage() {
               </tr>
             )}
             {visibleOrders.map((o) => (
-              <tr key={o.id}>
+              <tr key={o.id} className="hover:bg-slate-50">
                 <td className="px-4 py-3 font-medium text-slate-800">
                   <Link href={`/orders/${o.id}`} className="hover:underline">
-                    {o.client?.name ?? '—'}
+                    {o.client_name}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-slate-600">{formatMoney(o.total)}</td>
+                {showTotals && (
+                  <td className="px-4 py-3 text-slate-600">{o.total !== null ? formatMoney(o.total) : '—'}</td>
+                )}
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <StatusBadge status={o.status} />
@@ -127,7 +135,7 @@ export default function OrdersPage() {
                 </td>
                 <td className="px-4 py-3 text-slate-500">{formatDate(o.created_at)}</td>
                 <td className="px-4 py-3 text-right">
-                  <Link href={`/orders/${o.id}`} className="text-xs font-medium text-blue-600 hover:underline">
+                  <Link href={`/orders/${o.id}`} className="text-xs font-medium text-indigo-600 hover:underline">
                     Детали
                   </Link>
                 </td>

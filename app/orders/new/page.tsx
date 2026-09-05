@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Client, Product } from '@/lib/types';
 import { formatMoney } from '@/lib/format';
+import RequireRole from '@/components/RequireRole';
 
 interface LineItem {
   key: string;
@@ -17,7 +18,7 @@ function emptyLine(): LineItem {
   return { key: crypto.randomUUID(), product_id: '', quantity: 1, price: 0 };
 }
 
-export default function NewOrderPage() {
+function NewOrderForm() {
   const router = useRouter();
   const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -31,10 +32,10 @@ export default function NewOrderPage() {
     async function load() {
       const [{ data: clientsData }, { data: productsData }] = await Promise.all([
         supabase.from('clients').select('*').order('name'),
-        supabase.from('products').select('*').order('name'),
+        supabase.from('products_view').select('*').order('name'),
       ]);
       setClients(clientsData ?? []);
-      setProducts(productsData ?? []);
+      setProducts((productsData as unknown as Product[]) ?? []);
     }
     load();
   }, []);
@@ -58,6 +59,16 @@ export default function NewOrderPage() {
 
   const total = items.reduce((sum, it) => sum + it.quantity * it.price, 0);
 
+  function stockFor(productId: string) {
+    return products.find((p) => p.id === productId)?.stock_quantity ?? null;
+  }
+
+  const hasStockIssue = items.some((it) => {
+    if (!it.product_id) return false;
+    const stock = stockFor(it.product_id);
+    return stock !== null && it.quantity > stock;
+  });
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -71,10 +82,14 @@ export default function NewOrderPage() {
       setError('Добавьте хотя бы один товар');
       return;
     }
+    if (hasStockIssue) {
+      setError('Количество некоторых товаров превышает остаток на складе');
+      return;
+    }
 
     setSaving(true);
     const { data: order, error: orderError } = await supabase
-      .from('orders')
+      .from('orders_view')
       .insert({ client_id: clientId, status: 'new', total, comment: comment.trim() || null })
       .select()
       .single();
@@ -85,7 +100,7 @@ export default function NewOrderPage() {
       return;
     }
 
-    const { error: itemsError } = await supabase.from('order_items').insert(
+    const { error: itemsError } = await supabase.from('order_items_view').insert(
       validItems.map((it) => ({
         order_id: order.id,
         product_id: it.product_id,
@@ -146,7 +161,7 @@ export default function NewOrderPage() {
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-700">Товары</h2>
-            <button type="button" onClick={addLine} className="text-xs font-medium text-blue-600 hover:underline">
+            <button type="button" onClick={addLine} className="text-xs font-medium text-indigo-600 hover:underline">
               + Добавить товар
             </button>
           </div>
@@ -154,28 +169,32 @@ export default function NewOrderPage() {
           <div className="space-y-3">
             {items.map((item) => {
               const subtotal = item.quantity * item.price;
+              const stock = stockFor(item.product_id);
+              const overStock = stock !== null && item.quantity > stock;
               return (
                 <div
                   key={item.key}
                   className="grid grid-cols-1 gap-2 rounded-md border border-slate-100 p-3 sm:grid-cols-12 sm:items-center"
                 >
                   <select
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-5"
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-4"
                     value={item.product_id}
                     onChange={(e) => handleProductChange(item.key, e.target.value)}
                   >
                     <option value="">Выберите товар</option>
                     {products.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name}
+                        {p.name} (остаток: {p.stock_quantity})
                       </option>
                     ))}
                   </select>
                   <input
                     type="number"
                     min={0}
-                    step="0.01"
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2"
+                    step="1"
+                    className={`rounded-md border px-3 py-2 text-sm sm:col-span-2 ${
+                      overStock ? 'border-red-400 text-red-600' : 'border-slate-300'
+                    }`}
                     placeholder="Кол-во"
                     value={item.quantity}
                     onChange={(e) => updateItem(item.key, { quantity: Number(e.target.value) })}
@@ -190,6 +209,9 @@ export default function NewOrderPage() {
                     onChange={(e) => updateItem(item.key, { price: Number(e.target.value) })}
                   />
                   <div className="text-sm font-medium text-slate-700 sm:col-span-2">{formatMoney(subtotal)}</div>
+                  <div className="text-xs text-slate-400 sm:col-span-1">
+                    {stock !== null && <span className={overStock ? 'text-red-500' : ''}>ост. {stock}</span>}
+                  </div>
                   <button
                     type="button"
                     onClick={() => removeLine(item.key)}
@@ -197,13 +219,18 @@ export default function NewOrderPage() {
                   >
                     Убрать
                   </button>
+                  {overStock && (
+                    <p className="text-xs text-red-500 sm:col-span-12">
+                      Недостаточно товара на складе — доступно только {stock}.
+                    </p>
+                  )}
                 </div>
               );
             })}
           </div>
 
           {products.length === 0 && (
-            <p className="mt-2 text-xs text-amber-600">Сначала добавьте товары на странице «Товары»</p>
+            <p className="mt-2 text-xs text-amber-600">Сначала добавьте товары на странице «Склад»</p>
           )}
 
           <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
@@ -216,12 +243,20 @@ export default function NewOrderPage() {
 
         <button
           type="submit"
-          disabled={saving}
-          className="rounded-md bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+          disabled={saving || hasStockIssue}
+          className="rounded-md bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
         >
           {saving ? 'Создание…' : 'Создать заказ'}
         </button>
       </form>
     </div>
+  );
+}
+
+export default function NewOrderPage() {
+  return (
+    <RequireRole roles={['ceo']}>
+      <NewOrderForm />
+    </RequireRole>
   );
 }

@@ -4,8 +4,9 @@ import { useEffect, useState, FormEvent } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Client } from '@/lib/types';
 import { formatDate } from '@/lib/format';
+import RequireRole from '@/components/RequireRole';
 
-export default function ClientsPage() {
+function ClientsContent() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +94,7 @@ export default function ClientsPage() {
         <button
           type="submit"
           disabled={saving}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 sm:col-span-2 lg:col-span-1"
+          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:col-span-2 lg:col-span-1"
         >
           {saving ? 'Сохранение…' : 'Добавить клиента'}
         </button>
@@ -149,5 +150,13 @@ export default function ClientsPage() {
         </table>
       </div>
     </div>
+  );
+}
+
+export default function ClientsPage() {
+  return (
+    <RequireRole roles={['ceo']}>
+      <ClientsContent />
+    </RequireRole>
   );
 }
