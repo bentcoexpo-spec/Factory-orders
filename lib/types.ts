@@ -1,4 +1,11 @@
-export type OrderStatus = 'new' | 'confirmed' | 'in_production' | 'shipped' | 'paid' | 'cancelled';
+export type OrderStatus =
+  | 'new'
+  | 'confirmed'
+  | 'in_production'
+  | 'issued'
+  | 'shipped'
+  | 'paid'
+  | 'cancelled';
 
 export type Role = 'ceo' | 'kladovshik';
 
@@ -17,14 +24,16 @@ export interface Client {
   created_at: string;
 }
 
-// Ряд из product_variants_view: одна комбинация цвет+размер конкретного
-// товара. Цена общая на весь товар (лежит в products), видна только CEO.
+// Ряд из product_variants_view: одна комбинация цвет+размер+печать
+// конкретного товара. Цена общая на весь товар (лежит в products),
+// видна только CEO.
 export interface ProductVariant {
   id: string;
   product_id: string;
   product_name: string;
   color: string | null;
   size: string | null;
+  print_type: string;
   sku: string | null;
   unit: string;
   stock_quantity: number;
@@ -33,6 +42,7 @@ export interface ProductVariant {
 }
 
 export const LOW_STOCK_THRESHOLD = 30;
+export const NO_PRINT = 'без печати';
 
 export function stockStatus(quantity: number): 'out' | 'low' | 'ok' {
   if (quantity <= 0) return 'out';
@@ -40,8 +50,9 @@ export function stockStatus(quantity: number): 'out' | 'low' | 'ok' {
   return 'ok';
 }
 
-export function variantLabel(variant: { color: string | null; size: string | null }) {
+export function variantLabel(variant: { color: string | null; size: string | null; print_type?: string | null }) {
   const parts = [variant.size, variant.color].filter(Boolean);
+  if (variant.print_type && variant.print_type !== NO_PRINT) parts.push(variant.print_type);
   return parts.length > 0 ? parts.join(', ') : null;
 }
 
@@ -52,6 +63,7 @@ export interface OrderItemView {
   product_name: string;
   color: string | null;
   size: string | null;
+  print_type: string;
   product_unit: string;
   quantity: number;
   price: number | null;
@@ -72,6 +84,25 @@ export interface OrderView {
   created_at: string;
 }
 
+// Ряд из stock_receipts_view — запись в истории поступлений.
+export interface StockReceipt {
+  id: string;
+  variant_id: string;
+  product_name: string;
+  color: string | null;
+  size: string | null;
+  print_type: string;
+  unit: string;
+  packs: number;
+  units_per_pack: number;
+  loose_units: number;
+  total_quantity: number;
+  brought_by: string | null;
+  comment: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 // Полная (немаскированная) форма заказа для аналитики — доступна
 // только CEO, т.к. таблицы orders/order_items/product_variants/products/
 // clients напрямую разрешены только его роли (см. supabase/*.sql).
@@ -84,6 +115,7 @@ export interface AnalyticsOrderItem {
     id: string;
     color: string | null;
     size: string | null;
+    print_type: string | null;
     unit: string;
     product?: { id: string; name: string } | null;
   } | null;
@@ -103,6 +135,7 @@ export const ORDER_STATUSES: { value: OrderStatus; label: string; color: string 
   { value: 'new', label: 'Новый', color: 'bg-slate-500' },
   { value: 'confirmed', label: 'Подтверждён', color: 'bg-blue-500' },
   { value: 'in_production', label: 'В производстве', color: 'bg-amber-500' },
+  { value: 'issued', label: 'Выдан', color: 'bg-teal-600' },
   { value: 'shipped', label: 'Отгружен', color: 'bg-purple-500' },
   { value: 'paid', label: 'Оплачен', color: 'bg-green-600' },
   { value: 'cancelled', label: 'Отменён', color: 'bg-red-600' },

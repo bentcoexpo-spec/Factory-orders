@@ -6,6 +6,7 @@ export interface NavItem {
   shortLabel: string;
   icon: (props: { className?: string }) => JSX.Element;
   roles: Role[];
+  hideOnMobileNav?: boolean;
 }
 
 export function IconOrders({ className }: { className?: string }) {
@@ -52,18 +53,76 @@ export function IconChart({ className }: { className?: string }) {
   );
 }
 
-// Полный список — для десктопного сайдбара.
+export function IconReceiving({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M10 3v9M6 8.5 10 12l4-3.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.5 13.5V16h13v-2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function IconOutgoing({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M10 12V3M6 6.5 10 3l4 3.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.5 13.5V16h13v-2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function IconHistory({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <circle cx="10" cy="10.5" r="6.3" />
+      <path d="M10 7.3V10.5l2.6 1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7 3.2 10 3l.6 2.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Полный список пунктов меню. roles определяет, кому пункт виден
+// в сайдбаре; hideOnMobileNav убирает его из нижнего меню на телефоне,
+// когда там и так тесно, а действие доступно другим способом
+// (например, кнопкой на самой странице).
 export const NAV_ITEMS: NavItem[] = [
-  { href: '/orders', label: 'Заказы', shortLabel: 'Заказы', icon: IconOrders, roles: ['ceo', 'kladovshik'] },
-  { href: '/orders/new', label: 'Новый заказ', shortLabel: 'Новый', icon: IconPlus, roles: ['ceo', 'kladovshik'] },
+  { href: '/orders', label: 'Заказы', shortLabel: 'Заказы', icon: IconOrders, roles: ['ceo'] },
+  {
+    href: '/orders/new',
+    label: 'Новый заказ',
+    shortLabel: 'Новый',
+    icon: IconPlus,
+    roles: ['ceo'],
+    hideOnMobileNav: true,
+  },
   { href: '/clients', label: 'Клиенты', shortLabel: 'Клиенты', icon: IconUsers, roles: ['ceo'] },
+  {
+    href: '/warehouse/receiving',
+    label: 'Приход',
+    shortLabel: 'Приход',
+    icon: IconReceiving,
+    roles: ['kladovshik'],
+  },
+  {
+    href: '/warehouse/outgoing',
+    label: 'Уход',
+    shortLabel: 'Уход',
+    icon: IconOutgoing,
+    roles: ['kladovshik'],
+  },
   { href: '/products', label: 'Склад', shortLabel: 'Склад', icon: IconBox, roles: ['ceo', 'kladovshik'] },
+  {
+    href: '/warehouse/receiving-history',
+    label: 'История прихода',
+    shortLabel: 'История',
+    icon: IconHistory,
+    roles: ['ceo'],
+    hideOnMobileNav: true,
+  },
   { href: '/analytics', label: 'Аналитика', shortLabel: 'Аналитика', icon: IconChart, roles: ['ceo'] },
 ];
 
-// Укороченный список для нижнего меню на телефоне — "Новый заказ"
-// доступен через кнопку на странице «Заказы», отдельная вкладка не нужна.
-export const MOBILE_NAV_ITEMS: NavItem[] = NAV_ITEMS.filter((item) => item.href !== '/orders/new');
+export const MOBILE_NAV_ITEMS: NavItem[] = NAV_ITEMS.filter((item) => !item.hideOnMobileNav);
 
 export function isNavItemActive(href: string, pathname: string) {
   if (href === '/orders') {

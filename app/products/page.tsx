@@ -65,6 +65,7 @@ export default function ProductsPage() {
     product_name: '',
     color: '',
     size: '',
+    print_type: '',
     sku: '',
     unit: 'шт',
     price: '',
@@ -99,6 +100,7 @@ export default function ProductsPage() {
       product_name: form.product_name.trim(),
       color: form.color.trim() || null,
       size: form.size.trim() || null,
+      print_type: form.print_type.trim() || null,
       sku: form.sku.trim() || null,
       unit: form.unit.trim() || 'шт',
       price: form.price === '' ? null : Number(form.price),
@@ -109,7 +111,16 @@ export default function ProductsPage() {
       setError(error.message);
       return;
     }
-    setForm({ product_name: '', color: '', size: '', sku: '', unit: 'шт', price: '', stock_quantity: '' });
+    setForm({
+      product_name: '',
+      color: '',
+      size: '',
+      print_type: '',
+      sku: '',
+      unit: 'шт',
+      price: '',
+      stock_quantity: '',
+    });
     loadVariants();
   }
 
@@ -192,6 +203,15 @@ export default function ProductsPage() {
               className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
               value={form.size}
               onChange={(e) => setForm({ ...form, size: e.target.value })}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-500">Печать</span>
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+              placeholder="без печати"
+              value={form.print_type}
+              onChange={(e) => setForm({ ...form, print_type: e.target.value })}
             />
           </label>
           <label className="block text-sm">
