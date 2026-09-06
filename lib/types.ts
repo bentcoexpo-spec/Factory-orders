@@ -28,7 +28,7 @@ export type WarehouseType = 'production' | 'finished_goods';
 
 export const WAREHOUSE_TYPE_LABELS: Record<WarehouseType, string> = {
   finished_goods: 'Готовая продукция',
-  production: 'Производство',
+  production: 'Склад сырья',
 };
 
 // Ряд из product_variants_view: одна комбинация цвет+размер+печать
@@ -90,6 +90,7 @@ export interface OrderView {
   comment: string | null;
   stock_deducted: boolean;
   created_at: string;
+  issued_at: string | null;
 }
 
 // Ряд из stock_receipts_view — запись в истории поступлений.

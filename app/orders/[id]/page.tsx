@@ -70,6 +70,7 @@ export default function OrderDetailPage() {
           <StatusBadge status={order.status} />
         </div>
         <p className="mt-1 text-sm text-slate-500">Создан {formatDate(order.created_at)}</p>
+        {order.issued_at && <p className="text-sm text-slate-500">Выдан {formatDate(order.issued_at)}</p>}
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

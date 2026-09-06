@@ -39,15 +39,24 @@ export interface OrderFormProps {
   subheading: string;
   submitLabel: string;
   savingLabel: string;
-  /** Если задан — сразу после создания заказ переводится в этот статус
-   *  (нужно для «Ухода», где товар уже физически выдан клиенту). */
-  finalStatus?: OrderStatus;
+  /** Показывать переключатель «Клиент забирает сейчас» / «Оставить на
+   *  потом» (складской экран «Заказ»). Если не показан — заказ всегда
+   *  создаётся со статусом «Новый», без немедленного списания (как у
+   *  CEO на /orders/new). */
+  showPickupToggle?: boolean;
 }
 
-export default function OrderForm({ heading, subheading, submitLabel, savingLabel, finalStatus }: OrderFormProps) {
+export default function OrderForm({
+  heading,
+  subheading,
+  submitLabel,
+  savingLabel,
+  showPickupToggle,
+}: OrderFormProps) {
   const router = useRouter();
   const { role } = useRole();
   const isCeo = role === 'ceo';
+  const [immediatePickup, setImmediatePickup] = useState(true);
 
   const [client, setClient] = useState<Client | null>(null);
   const [comment, setComment] = useState('');
@@ -190,6 +199,8 @@ export default function OrderForm({ heading, subheading, submitLabel, savingLabe
       setError(itemsError.message);
       return;
     }
+
+    const finalStatus: OrderStatus | undefined = showPickupToggle && immediatePickup ? 'issued' : undefined;
 
     if (finalStatus) {
       const { error: statusError } = await supabase
@@ -452,6 +463,37 @@ export default function OrderForm({ heading, subheading, submitLabel, savingLabe
           )}
         </div>
 
+        {showPickupToggle && (
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <p className="mb-2 text-sm font-semibold text-slate-700">Когда клиент забирает товар</p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => setImmediatePickup(true)}
+                className={`flex-1 rounded-md px-3 py-2.5 text-sm font-medium ${
+                  immediatePickup ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                Забирает сейчас
+              </button>
+              <button
+                type="button"
+                onClick={() => setImmediatePickup(false)}
+                className={`flex-1 rounded-md px-3 py-2.5 text-sm font-medium ${
+                  !immediatePickup ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                Оставить на потом
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-slate-400">
+              {immediatePickup
+                ? 'Остаток спишется сразу, статус заказа — «Выдан».'
+                : 'Остаток останется на складе, статус — «Новый». Спишется позже, когда заказ переведут в «В производстве» или «Выдан».'}
+            </p>
+          </div>
+        )}
+
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <button
@@ -459,7 +501,7 @@ export default function OrderForm({ heading, subheading, submitLabel, savingLabe
           disabled={saving}
           className="w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
         >
-          {saving ? savingLabel : submitLabel}
+          {saving ? savingLabel : showPickupToggle ? (immediatePickup ? 'Оформить выдачу' : submitLabel) : submitLabel}
         </button>
       </form>
     </div>
