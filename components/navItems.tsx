@@ -71,6 +71,18 @@ export function IconOutgoing({ className }: { className?: string }) {
   );
 }
 
+export function IconClientOrder({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="3.5" y="4" width="13" height="12.5" rx="1.5" />
+      <path d="M3.5 8h13" strokeLinecap="round" />
+      <path d="M7 3v2.5M13 3v2.5" strokeLinecap="round" />
+      <circle cx="10" cy="12" r="2" />
+      <path d="M10 11v1l0.8 0.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function IconHistory({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -108,6 +120,13 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Уход',
     shortLabel: 'Уход',
     icon: IconOutgoing,
+    roles: ['kladovshik'],
+  },
+  {
+    href: '/warehouse/client-order',
+    label: 'Клиент заказ',
+    shortLabel: 'Заказ',
+    icon: IconClientOrder,
     roles: ['kladovshik'],
   },
   { href: '/products', label: 'Склад', shortLabel: 'Склад', icon: IconBox, roles: ['ceo', 'kladovshik'] },

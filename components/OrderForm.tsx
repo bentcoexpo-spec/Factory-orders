@@ -77,6 +77,7 @@ export default function OrderForm({ heading, subheading, submitLabel, savingLabe
       const { data, error } = await supabase
         .from('product_variants_view')
         .select('*')
+        .eq('warehouse_type', 'finished_goods')
         .ilike('product_name', `%${q}%`)
         .order('product_name')
         .limit(50);
@@ -126,6 +127,7 @@ export default function OrderForm({ heading, subheading, submitLabel, savingLabe
         size: newVariant.size.trim() || null,
         print_type: newVariant.print_type.trim() || null,
         stock_quantity: 0,
+        warehouse_type: 'finished_goods',
       })
       .select()
       .single();

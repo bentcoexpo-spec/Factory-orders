@@ -2,9 +2,17 @@
 
 import { useEffect, useRef, useState, FormEvent } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ProductVariant, StockReceipt, stockStatus, variantLabel } from '@/lib/types';
+import {
+  ProductVariant,
+  StockReceipt,
+  WarehouseType,
+  WAREHOUSE_TYPE_LABELS,
+  stockStatus,
+  variantLabel,
+} from '@/lib/types';
 import { formatDate } from '@/lib/format';
 import RequireRole from '@/components/RequireRole';
+import SizeColorGrid, { GridCell } from '@/components/SizeColorGrid';
 
 interface NewVariantForm {
   product_name: string;
@@ -12,10 +20,35 @@ interface NewVariantForm {
   color: string;
   size: string;
   print_type: string;
+  warehouse_type: WarehouseType;
 }
 
 function emptyNewVariantForm(name = ''): NewVariantForm {
-  return { product_name: name, sku: '', color: '', size: '', print_type: '' };
+  return { product_name: name, sku: '', color: '', size: '', print_type: '', warehouse_type: 'finished_goods' };
+}
+
+function WarehouseTypeSelect({
+  value,
+  onChange,
+}: {
+  value: WarehouseType;
+  onChange: (value: WarehouseType) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-medium text-slate-500">
+        Тип склада <span className="normal-case text-slate-400">(если товар новый)</span>
+      </span>
+      <select
+        className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+        value={value}
+        onChange={(e) => onChange(e.target.value as WarehouseType)}
+      >
+        <option value="finished_goods">{WAREHOUSE_TYPE_LABELS.finished_goods}</option>
+        <option value="production">{WAREHOUSE_TYPE_LABELS.production}</option>
+      </select>
+    </label>
+  );
 }
 
 function ReceivingForm() {
@@ -28,6 +61,12 @@ function ReceivingForm() {
   const [addingNew, setAddingNew] = useState(false);
   const [newVariant, setNewVariant] = useState<NewVariantForm>(emptyNewVariantForm());
   const [creatingVariant, setCreatingVariant] = useState(false);
+
+  const [gridMode, setGridMode] = useState(false);
+  const [gridProductName, setGridProductName] = useState('');
+  const [gridPrintType, setGridPrintType] = useState('');
+  const [gridWarehouseType, setGridWarehouseType] = useState<WarehouseType>('finished_goods');
+  const [gridSaving, setGridSaving] = useState(false);
 
   const [packs, setPacks] = useState('');
   const [unitsPerPack, setUnitsPerPack] = useState('');
@@ -90,6 +129,7 @@ function ReceivingForm() {
     setProductQuery('');
     setResults([]);
     setAddingNew(false);
+    setGridMode(false);
     setSuccess(null);
   }
 
@@ -106,6 +146,7 @@ function ReceivingForm() {
         size: newVariant.size.trim() || null,
         print_type: newVariant.print_type.trim() || null,
         stock_quantity: 0,
+        warehouse_type: newVariant.warehouse_type,
       })
       .select()
       .single();
@@ -116,6 +157,68 @@ function ReceivingForm() {
     }
     selectVariant(data as unknown as ProductVariant);
     setNewVariant(emptyNewVariantForm());
+  }
+
+  async function handleGridSubmit(cells: GridCell[]) {
+    if (!gridProductName.trim()) {
+      setError('Укажите название товара');
+      return;
+    }
+    setGridSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    let created = 0;
+    const failed: string[] = [];
+
+    for (const cell of cells) {
+      const { data: variant, error: variantError } = await supabase
+        .from('product_variants_view')
+        .insert({
+          product_name: gridProductName.trim(),
+          color: cell.color,
+          size: cell.size,
+          print_type: gridPrintType.trim() || null,
+          stock_quantity: 0,
+          warehouse_type: gridWarehouseType,
+        })
+        .select()
+        .single();
+
+      if (variantError || !variant) {
+        failed.push(`${cell.color} ${cell.size} (уже существует?)`);
+        continue;
+      }
+
+      const { error: receiptError } = await supabase.from('stock_receipts').insert({
+        variant_id: variant.id,
+        packs: 0,
+        units_per_pack: 0,
+        loose_units: cell.quantity,
+        brought_by: broughtBy.trim() || null,
+        comment: comment.trim() || null,
+      });
+
+      if (receiptError) {
+        failed.push(`${cell.color} ${cell.size}`);
+        continue;
+      }
+      created += 1;
+    }
+
+    setGridSaving(false);
+
+    if (created > 0) {
+      setSuccess(
+        `Создано вариантов: ${created}${failed.length ? `. Не удалось: ${failed.join(', ')}` : ''}`
+      );
+      setGridMode(false);
+      setGridProductName('');
+      setGridPrintType('');
+      loadRecent();
+    } else {
+      setError(`Не удалось создать ни одного варианта: ${failed.join(', ')}`);
+    }
   }
 
   function resetQuantities() {
@@ -200,12 +303,13 @@ function ReceivingForm() {
                 onChange={(e) => {
                   setProductQuery(e.target.value);
                   setAddingNew(false);
+                  setGridMode(false);
                 }}
               />
 
               {searching && <p className="mt-2 text-xs text-slate-400">Поиск…</p>}
 
-              {!searching && productQuery.trim().length >= 2 && groupedResults.length === 0 && !addingNew && (
+              {!searching && productQuery.trim().length >= 2 && groupedResults.length === 0 && !addingNew && !gridMode && (
                 <p className="mt-2 text-xs text-slate-400">Ничего не найдено</p>
               )}
 
@@ -242,17 +346,29 @@ function ReceivingForm() {
                 </div>
               )}
 
-              {productQuery.trim().length >= 2 && !addingNew && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAddingNew(true);
-                    setNewVariant(emptyNewVariantForm(productQuery.trim()));
-                  }}
-                  className="mt-3 w-full rounded-md border border-dashed border-indigo-300 px-3 py-2.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
-                >
-                  + Новый товар «{productQuery.trim()}»
-                </button>
+              {productQuery.trim().length >= 2 && !addingNew && !gridMode && (
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddingNew(true);
+                      setNewVariant(emptyNewVariantForm(productQuery.trim()));
+                    }}
+                    className="rounded-md border border-dashed border-indigo-300 px-3 py-2.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+                  >
+                    + Новый товар (1 вариант)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGridMode(true);
+                      setGridProductName(productQuery.trim());
+                    }}
+                    className="rounded-md border border-dashed border-indigo-300 px-3 py-2.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+                  >
+                    + Сетка размеров (сразу несколько)
+                  </button>
+                </div>
               )}
 
               {addingNew && (
@@ -301,6 +417,10 @@ function ReceivingForm() {
                       onChange={(e) => setNewVariant({ ...newVariant, print_type: e.target.value })}
                     />
                   </label>
+                  <WarehouseTypeSelect
+                    value={newVariant.warehouse_type}
+                    onChange={(value) => setNewVariant({ ...newVariant, warehouse_type: value })}
+                  />
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -320,54 +440,101 @@ function ReceivingForm() {
                   </div>
                 </div>
               )}
+
+              {gridMode && (
+                <div className="mt-3 space-y-3 rounded-md border border-slate-200 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-slate-700">Сетка размеров</p>
+                    <button
+                      type="button"
+                      onClick={() => setGridMode(false)}
+                      className="text-sm font-medium text-slate-500"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">Название товара *</span>
+                    <input
+                      className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                      value={gridProductName}
+                      onChange={(e) => setGridProductName(e.target.value)}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">
+                      Печать <span className="normal-case text-slate-400">(одна на всю партию)</span>
+                    </span>
+                    <input
+                      className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                      placeholder="без печати"
+                      value={gridPrintType}
+                      onChange={(e) => setGridPrintType(e.target.value)}
+                    />
+                  </label>
+                  <WarehouseTypeSelect value={gridWarehouseType} onChange={setGridWarehouseType} />
+                  <p className="text-xs text-amber-600">
+                    Сетка создаёт новые комбинации размер+цвет. Если такой вариант уже есть — пополните его
+                    остаток обычным способом выше.
+                  </p>
+                  <SizeColorGrid
+                    onSubmit={handleGridSubmit}
+                    submitLabel="Сохранить все варианты"
+                    savingLabel="Сохранение…"
+                    saving={gridSaving}
+                  />
+                </div>
+              )}
             </>
           )}
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">Количество</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-500">Пачек</span>
+        {!gridMode && (
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <h2 className="mb-3 text-sm font-semibold text-slate-700">Количество</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-500">Пачек</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="1"
+                  inputMode="numeric"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  value={packs}
+                  onChange={(e) => setPacks(e.target.value)}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-500">Штук в пачке</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="1"
+                  inputMode="numeric"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  value={unitsPerPack}
+                  onChange={(e) => setUnitsPerPack(e.target.value)}
+                />
+              </label>
+            </div>
+            <label className="mt-3 block">
+              <span className="mb-1 block text-xs font-medium text-slate-500">Ещё штук россыпью</span>
               <input
                 type="number"
                 min={0}
                 step="1"
                 inputMode="numeric"
                 className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-                value={packs}
-                onChange={(e) => setPacks(e.target.value)}
+                value={looseUnits}
+                onChange={(e) => setLooseUnits(e.target.value)}
               />
             </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-500">Штук в пачке</span>
-              <input
-                type="number"
-                min={0}
-                step="1"
-                inputMode="numeric"
-                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-                value={unitsPerPack}
-                onChange={(e) => setUnitsPerPack(e.target.value)}
-              />
-            </label>
+            <p className="mt-2 text-xs text-slate-400">
+              Итого поступит: {(Number(packs) || 0) * (Number(unitsPerPack) || 0) + (Number(looseUnits) || 0)}
+            </p>
           </div>
-          <label className="mt-3 block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Ещё штук россыпью</span>
-            <input
-              type="number"
-              min={0}
-              step="1"
-              inputMode="numeric"
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-              value={looseUnits}
-              onChange={(e) => setLooseUnits(e.target.value)}
-            />
-          </label>
-          <p className="mt-2 text-xs text-slate-400">
-            Итого поступит: {(Number(packs) || 0) * (Number(unitsPerPack) || 0) + (Number(looseUnits) || 0)}
-          </p>
-        </div>
+        )}
 
         <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
           <label className="block">
@@ -392,13 +559,15 @@ function ReceivingForm() {
         {error && <p className="text-sm text-red-600">{error}</p>}
         {success && <p className="text-sm font-medium text-green-600">{success}</p>}
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
-        >
-          {saving ? 'Сохранение…' : 'Оформить приход'}
-        </button>
+        {!gridMode && (
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
+          >
+            {saving ? 'Сохранение…' : 'Оформить приход'}
+          </button>
+        )}
       </form>
 
       {recent.length > 0 && (

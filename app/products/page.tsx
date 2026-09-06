@@ -2,9 +2,10 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ProductVariant, stockStatus, variantLabel } from '@/lib/types';
+import { ProductVariant, WarehouseType, WAREHOUSE_TYPE_LABELS, stockStatus, variantLabel } from '@/lib/types';
 import { formatMoney } from '@/lib/format';
 import { useRole } from '@/components/RoleProvider';
+import SizeColorGrid, { GridCell } from '@/components/SizeColorGrid';
 
 const STOCK_STYLES: Record<'out' | 'low' | 'ok', string> = {
   out: 'border-red-300 text-red-600',
@@ -61,6 +62,9 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [activeType, setActiveType] = useState<WarehouseType>('finished_goods');
+  const [gridMode, setGridMode] = useState(false);
+  const [gridSaving, setGridSaving] = useState(false);
   const [form, setForm] = useState({
     product_name: '',
     color: '',
@@ -70,6 +74,7 @@ export default function ProductsPage() {
     unit: 'шт',
     price: '',
     stock_quantity: '',
+    warehouse_type: 'finished_goods' as WarehouseType,
   });
   const [stockDrafts, setStockDrafts] = useState<Record<string, string>>({});
 
@@ -89,7 +94,10 @@ export default function ProductsPage() {
   }, []);
 
   const isCeo = role === 'ceo';
-  const productNames = Array.from(new Set(variants.map((v) => v.product_name))).sort();
+  const visibleVariants = variants.filter((v) => v.warehouse_type === activeType);
+  const productNames = Array.from(
+    new Set(variants.filter((v) => v.warehouse_type === activeType).map((v) => v.product_name))
+  ).sort();
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -105,6 +113,7 @@ export default function ProductsPage() {
       unit: form.unit.trim() || 'шт',
       price: form.price === '' ? null : Number(form.price),
       stock_quantity: Number(form.stock_quantity) || 0,
+      warehouse_type: form.warehouse_type,
     });
     setSaving(false);
     if (error) {
@@ -120,8 +129,61 @@ export default function ProductsPage() {
       unit: 'шт',
       price: '',
       stock_quantity: '',
+      warehouse_type: activeType,
     });
     loadVariants();
+  }
+
+  async function handleGridSubmit(cells: GridCell[]) {
+    if (!form.product_name.trim()) {
+      setError('Укажите название товара');
+      return;
+    }
+    setGridSaving(true);
+    setError(null);
+
+    let created = 0;
+    const failed: string[] = [];
+
+    for (const cell of cells) {
+      const { error: variantError } = await supabase.from('product_variants_view').insert({
+        product_name: form.product_name.trim(),
+        color: cell.color,
+        size: cell.size,
+        print_type: form.print_type.trim() || null,
+        sku: form.sku.trim() || null,
+        unit: form.unit.trim() || 'шт',
+        price: form.price === '' ? null : Number(form.price),
+        stock_quantity: cell.quantity,
+        warehouse_type: form.warehouse_type,
+      });
+      if (variantError) {
+        failed.push(`${cell.color} ${cell.size} (уже существует?)`);
+        continue;
+      }
+      created += 1;
+    }
+
+    setGridSaving(false);
+
+    if (created > 0) {
+      setError(failed.length ? `Создано: ${created}. Не удалось: ${failed.join(', ')}` : null);
+      setGridMode(false);
+      setForm({
+        product_name: '',
+        color: '',
+        size: '',
+        print_type: '',
+        sku: '',
+        unit: 'шт',
+        price: '',
+        stock_quantity: '',
+        warehouse_type: activeType,
+      });
+      loadVariants();
+    } else {
+      setError(`Не удалось создать ни одного варианта: ${failed.join(', ')}`);
+    }
   }
 
   async function handleDelete(id: string) {
@@ -156,6 +218,16 @@ export default function ProductsPage() {
     loadVariants();
   }
 
+  async function handleWarehouseTypeChange(variant: ProductVariant, value: WarehouseType) {
+    setError(null);
+    const { error } = await supabase
+      .from('product_variants_view')
+      .update({ warehouse_type: value })
+      .eq('id', variant.id);
+    if (error) setError(error.message);
+    else loadVariants();
+  }
+
   if (roleLoading) {
     return <p className="text-sm text-slate-400">Загрузка…</p>;
   }
@@ -169,114 +241,178 @@ export default function ProductsPage() {
         </p>
       </div>
 
-      {isCeo && (
-        <form
-          onSubmit={handleSubmit}
-          className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-6"
-        >
-          <label className="block text-sm lg:col-span-2">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Название товара *</span>
-            <input
-              list="product-names"
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-              value={form.product_name}
-              onChange={(e) => setForm({ ...form, product_name: e.target.value })}
-              required
-            />
-            <datalist id="product-names">
-              {productNames.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Цвет</span>
-            <input
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-              value={form.color}
-              onChange={(e) => setForm({ ...form, color: e.target.value })}
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Размер</span>
-            <input
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-              value={form.size}
-              onChange={(e) => setForm({ ...form, size: e.target.value })}
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Печать</span>
-            <input
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-              placeholder="без печати"
-              value={form.print_type}
-              onChange={(e) => setForm({ ...form, print_type: e.target.value })}
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Остаток</span>
-            <input
-              type="number"
-              min={0}
-              step="1"
-              inputMode="numeric"
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-              value={form.stock_quantity}
-              onChange={(e) => setForm({ ...form, stock_quantity: e.target.value })}
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-500">
-              Цена <span className="normal-case text-slate-400">(на весь товар)</span>
-            </span>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              inputMode="decimal"
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-              value={form.price}
-              onChange={(e) => setForm({ ...form, price: e.target.value })}
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Артикул</span>
-            <input
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-              value={form.sku}
-              onChange={(e) => setForm({ ...form, sku: e.target.value })}
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Ед. изм.</span>
-            <input
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-              placeholder="шт, кг…"
-              value={form.unit}
-              onChange={(e) => setForm({ ...form, unit: e.target.value })}
-            />
-          </label>
+      <div className="flex gap-2">
+        {(Object.keys(WAREHOUSE_TYPE_LABELS) as WarehouseType[]).map((type) => (
           <button
-            type="submit"
-            disabled={saving}
-            className="rounded-md bg-indigo-600 px-4 py-3 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:col-span-2 sm:py-2.5 sm:text-sm lg:col-span-6"
+            key={type}
+            onClick={() => setActiveType(type)}
+            className={`rounded-full px-4 py-2 text-sm font-medium ${
+              activeType === type ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+            }`}
           >
-            {saving ? 'Сохранение…' : 'Добавить вариант'}
+            {WAREHOUSE_TYPE_LABELS[type]}
           </button>
-        </form>
+        ))}
+      </div>
+
+      {isCeo && (
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-700">
+              {gridMode ? 'Сетка размеров' : 'Добавить вариант'}
+            </h2>
+            <button
+              type="button"
+              onClick={() => setGridMode((v) => !v)}
+              className="text-xs font-medium text-indigo-600 active:underline"
+            >
+              {gridMode ? 'Один вариант' : 'Сразу несколько (сетка)'}
+            </button>
+          </div>
+
+          <form
+            onSubmit={handleSubmit}
+            className={gridMode ? 'space-y-3' : 'grid gap-3 sm:grid-cols-2 lg:grid-cols-6'}
+          >
+            <label className={`block text-sm ${gridMode ? '' : 'lg:col-span-2'}`}>
+              <span className="mb-1 block text-xs font-medium text-slate-500">Название товара *</span>
+              <input
+                list="product-names"
+                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                value={form.product_name}
+                onChange={(e) => setForm({ ...form, product_name: e.target.value })}
+                required
+              />
+              <datalist id="product-names">
+                {productNames.map((name) => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
+            </label>
+
+            {!gridMode && (
+              <>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">Цвет</span>
+                  <input
+                    className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                    value={form.color}
+                    onChange={(e) => setForm({ ...form, color: e.target.value })}
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">Размер</span>
+                  <input
+                    className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                    value={form.size}
+                    onChange={(e) => setForm({ ...form, size: e.target.value })}
+                  />
+                </label>
+              </>
+            )}
+
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-500">
+                Печать {gridMode && <span className="normal-case text-slate-400">(одна на всю партию)</span>}
+              </span>
+              <input
+                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                placeholder="без печати"
+                value={form.print_type}
+                onChange={(e) => setForm({ ...form, print_type: e.target.value })}
+              />
+            </label>
+
+            {!gridMode && (
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-500">Остаток</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="1"
+                  inputMode="numeric"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  value={form.stock_quantity}
+                  onChange={(e) => setForm({ ...form, stock_quantity: e.target.value })}
+                />
+              </label>
+            )}
+
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-500">
+                Цена <span className="normal-case text-slate-400">(на весь товар)</span>
+              </span>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                value={form.price}
+                onChange={(e) => setForm({ ...form, price: e.target.value })}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-500">Артикул</span>
+              <input
+                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                value={form.sku}
+                onChange={(e) => setForm({ ...form, sku: e.target.value })}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-500">Ед. изм.</span>
+              <input
+                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                placeholder="шт, кг…"
+                value={form.unit}
+                onChange={(e) => setForm({ ...form, unit: e.target.value })}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-500">
+                Тип склада <span className="normal-case text-slate-400">(если товар новый)</span>
+              </span>
+              <select
+                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                value={form.warehouse_type}
+                onChange={(e) => setForm({ ...form, warehouse_type: e.target.value as WarehouseType })}
+              >
+                <option value="finished_goods">{WAREHOUSE_TYPE_LABELS.finished_goods}</option>
+                <option value="production">{WAREHOUSE_TYPE_LABELS.production}</option>
+              </select>
+            </label>
+
+            {gridMode ? (
+              <SizeColorGrid
+                onSubmit={handleGridSubmit}
+                submitLabel="Сохранить все варианты"
+                savingLabel="Сохранение…"
+                saving={gridSaving}
+              />
+            ) : (
+              <button
+                type="submit"
+                disabled={saving}
+                className="rounded-md bg-indigo-600 px-4 py-3 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:col-span-2 sm:py-2.5 sm:text-sm lg:col-span-6"
+              >
+                {saving ? 'Сохранение…' : 'Добавить вариант'}
+              </button>
+            )}
+          </form>
+        </div>
       )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
-      {!loading && variants.length === 0 && <p className="text-sm text-slate-400">Товаров пока нет</p>}
+      {!loading && visibleVariants.length === 0 && <p className="text-sm text-slate-400">Товаров пока нет</p>}
 
-      {!loading && variants.length > 0 && (
+      {!loading && visibleVariants.length > 0 && (
         <>
           {/* Мобильная версия — карточки */}
           <div className="space-y-3 sm:hidden">
-            {variants.map((v) => {
+            {visibleVariants.map((v) => {
               const label = variantLabel(v);
               return (
                 <div key={v.id} className="rounded-lg border border-slate-200 bg-white p-4">
@@ -320,6 +456,18 @@ export default function ProductsPage() {
                       </div>
                     )}
                   </div>
+                  {isCeo && (
+                    <div className="mt-3">
+                      <select
+                        value={v.warehouse_type}
+                        onChange={(e) => handleWarehouseTypeChange(v, e.target.value as WarehouseType)}
+                        className="w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-xs text-slate-500"
+                      >
+                        <option value="finished_goods">{WAREHOUSE_TYPE_LABELS.finished_goods}</option>
+                        <option value="production">{WAREHOUSE_TYPE_LABELS.production}</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -335,11 +483,12 @@ export default function ProductsPage() {
                   <th className="px-4 py-3">Артикул</th>
                   <th className="px-4 py-3">Остаток</th>
                   {isCeo && <th className="px-4 py-3">Цена</th>}
+                  {isCeo && <th className="px-4 py-3">Тип склада</th>}
                   {isCeo && <th className="px-4 py-3" />}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {variants.map((v) => {
+                {visibleVariants.map((v) => {
                   const label = variantLabel(v);
                   return (
                     <tr key={v.id} className="hover:bg-slate-50">
@@ -358,6 +507,18 @@ export default function ProductsPage() {
                         </div>
                       </td>
                       {isCeo && <td className="px-4 py-3 text-slate-600">{formatMoney(v.price ?? 0)}</td>}
+                      {isCeo && (
+                        <td className="px-4 py-3">
+                          <select
+                            value={v.warehouse_type}
+                            onChange={(e) => handleWarehouseTypeChange(v, e.target.value as WarehouseType)}
+                            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600"
+                          >
+                            <option value="finished_goods">{WAREHOUSE_TYPE_LABELS.finished_goods}</option>
+                            <option value="production">{WAREHOUSE_TYPE_LABELS.production}</option>
+                          </select>
+                        </td>
+                      )}
                       {isCeo && (
                         <td className="px-4 py-3 text-right">
                           <button

@@ -24,9 +24,16 @@ export interface Client {
   created_at: string;
 }
 
+export type WarehouseType = 'production' | 'finished_goods';
+
+export const WAREHOUSE_TYPE_LABELS: Record<WarehouseType, string> = {
+  finished_goods: 'Готовая продукция',
+  production: 'Производство',
+};
+
 // Ряд из product_variants_view: одна комбинация цвет+размер+печать
-// конкретного товара. Цена общая на весь товар (лежит в products),
-// видна только CEO.
+// конкретного товара. Цена и тип склада общие на весь товар (лежат в
+// products), цена видна только CEO.
 export interface ProductVariant {
   id: string;
   product_id: string;
@@ -39,6 +46,7 @@ export interface ProductVariant {
   stock_quantity: number;
   price: number | null;
   created_at: string;
+  warehouse_type: WarehouseType;
 }
 
 export const LOW_STOCK_THRESHOLD = 30;
