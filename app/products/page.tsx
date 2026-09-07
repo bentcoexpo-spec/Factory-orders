@@ -76,6 +76,7 @@ export default function ProductsPage() {
   const [saving, setSaving] = useState(false);
   const [activeType, setActiveType] = useState<WarehouseType>('finished_goods');
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
+  const [colorFilter, setColorFilter] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [gridMode, setGridMode] = useState(false);
   const [gridSaving, setGridSaving] = useState(false);
@@ -97,6 +98,10 @@ export default function ProductsPage() {
     loadVariants();
   }, []);
 
+  useEffect(() => {
+    setColorFilter(null);
+  }, [selectedProduct]);
+
   const isCeo = role === 'ceo';
   const typedVariants = variants.filter((v) => v.warehouse_type === activeType);
 
@@ -110,6 +115,10 @@ export default function ProductsPage() {
   ).sort(([a], [b]) => a.localeCompare(b));
 
   const productVariants = selectedProduct ? typedVariants.filter((v) => v.product_name === selectedProduct) : [];
+  const productColors = Array.from(new Set(productVariants.map((v) => v.color).filter((c): c is string => !!c)));
+  const filteredProductVariants = colorFilter
+    ? productVariants.filter((v) => v.color === colorFilter)
+    : productVariants;
 
   function openAddForm(lockedName?: string) {
     setForm(emptyForm(activeType, lockedName ?? ''));
@@ -562,7 +571,31 @@ export default function ProductsPage() {
 
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
 
-      {!loading && selectedProduct && productVariants.length > 0 && variantsList(productVariants)}
+      {!loading && selectedProduct && productColors.length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setColorFilter(null)}
+            className={`rounded-full px-4 py-2 text-sm font-medium ${
+              colorFilter === null ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            Все
+          </button>
+          {productColors.map((color) => (
+            <button
+              key={color}
+              onClick={() => setColorFilter(color)}
+              className={`rounded-full px-4 py-2 text-sm font-medium ${
+                colorFilter === color ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {color}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!loading && selectedProduct && filteredProductVariants.length > 0 && variantsList(filteredProductVariants)}
 
       {!loading && !selectedProduct && (
         <>

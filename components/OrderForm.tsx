@@ -7,6 +7,7 @@ import { Client, OrderStatus, ProductVariant, stockStatus, variantLabel } from '
 import { formatMoney } from '@/lib/format';
 import { useRole } from '@/components/RoleProvider';
 import ClientPicker from '@/components/ClientPicker';
+import VariantPicker, { VariantPick } from '@/components/VariantPicker';
 
 interface LineItem {
   key: string;
@@ -70,6 +71,7 @@ export default function OrderForm({
   const [addingNew, setAddingNew] = useState(false);
   const [newVariant, setNewVariant] = useState<NewVariantForm>(emptyNewVariantForm());
   const [creatingVariant, setCreatingVariant] = useState(false);
+  const [activePicker, setActivePicker] = useState<{ name: string; variants: ProductVariant[] } | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +110,25 @@ export default function OrderForm({
     });
     setProductQuery('');
     setResults([]);
+    setAddingNew(false);
+  }
+
+  function addVariantsBulk(picks: VariantPick[]) {
+    setItems((prev) => {
+      const next = [...prev];
+      for (const { variant, quantity } of picks) {
+        const idx = next.findIndex((it) => it.variant.id === variant.id);
+        if (idx >= 0) {
+          next[idx] = { ...next[idx], quantity: next[idx].quantity + quantity };
+        } else {
+          next.push({ key: variant.id, variant, quantity, price: variant.price ?? 0 });
+        }
+      }
+      return next;
+    });
+    setProductQuery('');
+    setResults([]);
+    setActivePicker(null);
     setAddingNew(false);
   }
 
@@ -251,6 +272,7 @@ export default function OrderForm({
             onChange={(e) => {
               setProductQuery(e.target.value);
               setAddingNew(false);
+              setActivePicker(null);
             }}
           />
 
@@ -260,40 +282,34 @@ export default function OrderForm({
             <p className="mt-2 text-xs text-slate-400">Ничего не найдено</p>
           )}
 
-          {groupedResults.length > 0 && (
-            <div className="mt-3 space-y-3">
+          {groupedResults.length > 0 && !activePicker && (
+            <div className="mt-3 space-y-2">
               {groupedResults.map(([productName, variants]) => (
-                <div key={productName}>
-                  <p className="mb-1.5 text-sm font-medium text-slate-700">{productName}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {variants.map((v) => {
-                      const label = variantLabel(v) ?? 'Без варианта';
-                      const status = stockStatus(v.stock_quantity);
-                      return (
-                        <button
-                          key={v.id}
-                          type="button"
-                          onClick={() => addVariant(v)}
-                          className={`rounded-md border px-3 py-2.5 text-left text-sm ${
-                            status === 'out'
-                              ? 'border-red-300 bg-red-50'
-                              : status === 'low'
-                                ? 'border-amber-300 bg-amber-50'
-                                : 'border-slate-200 bg-white'
-                          }`}
-                        >
-                          <span className="block font-medium text-slate-800">{label}</span>
-                          <StockBadge quantity={v.stock_quantity} />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                <button
+                  key={productName}
+                  type="button"
+                  onClick={() => setActivePicker({ name: productName, variants })}
+                  className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2.5 text-left hover:bg-slate-50 active:bg-slate-100"
+                >
+                  <span className="text-sm font-medium text-slate-700">{productName}</span>
+                  <span className="text-xs text-slate-400">
+                    {variants.length} вариант{variants.length === 1 ? '' : 'ов'} →
+                  </span>
+                </button>
               ))}
             </div>
           )}
 
-          {productQuery.trim().length >= 2 && !addingNew && (
+          {activePicker && (
+            <VariantPicker
+              productName={activePicker.name}
+              variants={activePicker.variants}
+              onAdd={addVariantsBulk}
+              onCancel={() => setActivePicker(null)}
+            />
+          )}
+
+          {productQuery.trim().length >= 2 && !addingNew && !activePicker && (
             <button
               type="button"
               onClick={() => {
@@ -386,7 +402,12 @@ export default function OrderForm({
               const label = variantLabel(it.variant);
               const overStock = it.quantity > it.variant.stock_quantity;
               return (
-                <div key={it.key} className="space-y-2 rounded-md border border-slate-100 p-3">
+                <div
+                  key={it.key}
+                  className={`space-y-2 rounded-md border p-3 ${
+                    overStock ? 'border-red-400 bg-red-50' : 'border-slate-100'
+                  }`}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-sm font-medium text-slate-800">
@@ -436,9 +457,8 @@ export default function OrderForm({
                   </div>
 
                   {overStock && (
-                    <p className="text-xs font-medium text-red-600">
-                      Запрошено больше, чем на складе (доступно {it.variant.stock_quantity}) — заказ можно создать
-                      под будущую поставку.
+                    <p className="text-sm font-semibold text-red-600">
+                      Заказ не может быть выполнен полностью — доступно только {it.variant.stock_quantity}.
                     </p>
                   )}
 

@@ -5,7 +5,18 @@ export type OrderStatus =
   | 'issued'
   | 'shipped'
   | 'paid'
-  | 'cancelled';
+  | 'cancelled'
+  | 'closed_unfulfilled';
+
+// Причина завершения заказа, у которого на момент выдачи не хватило
+// остатка хотя бы по одной позиции (см. complete_order_with_shortage
+// в supabase/009_order_shortage_handling.sql).
+export type CompletionReason = 'partial_pickup' | 'no_stock';
+
+export const COMPLETION_REASON_LABELS: Record<CompletionReason, string> = {
+  partial_pickup: 'Клиент забрал, что было в наличии',
+  no_stock: 'Не было на складе',
+};
 
 export type Role = 'ceo' | 'kladovshik';
 
@@ -76,6 +87,7 @@ export interface OrderItemView {
   quantity: number;
   price: number | null;
   created_at: string;
+  stock_quantity: number;
 }
 
 export interface OrderView {
@@ -91,6 +103,8 @@ export interface OrderView {
   stock_deducted: boolean;
   created_at: string;
   issued_at: string | null;
+  completion_reason: CompletionReason | null;
+  closed_at: string | null;
 }
 
 // Ряд из stock_receipts_view — запись в истории поступлений.
@@ -148,6 +162,7 @@ export const ORDER_STATUSES: { value: OrderStatus; label: string; color: string 
   { value: 'shipped', label: 'Отгружен', color: 'bg-purple-500' },
   { value: 'paid', label: 'Оплачен', color: 'bg-green-600' },
   { value: 'cancelled', label: 'Отменён', color: 'bg-red-600' },
+  { value: 'closed_unfulfilled', label: 'Закрыт без выдачи', color: 'bg-slate-400' },
 ];
 
 export const ROLE_LABELS: Record<Role, string> = {
