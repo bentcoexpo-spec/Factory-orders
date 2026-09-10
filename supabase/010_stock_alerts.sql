@@ -17,8 +17,12 @@
 -- ПЕРЕД выполнением замените:
 --   1. v_url — на публичный адрес вашего приложения (уже подставлен
 --      https://factory-orders-5yuc3.ondigitalocean.app).
---   2. v_secret — держите значение ниже синхронным с переменной
---      окружения STOCK_ALERT_WEBHOOK_SECRET в приложении (см. README).
+--   2. v_secret — на тот же случайный секрет, который вы зададите в
+--      переменной окружения STOCK_ALERT_WEBHOOK_SECRET приложения
+--      (см. README). Значение ниже — только плейсхолдер, намеренно не
+--      настоящий секрет: реальный секрет не должен попадать в git
+--      (этот файл версионируется), подставьте его непосредственно
+--      в SQL Editor перед запуском, не сохраняя изменение в репозиторий.
 --      Это не токен Telegram, а просто защита эндпоинта от вызова
 --      посторонними, знающими его адрес.
 --
@@ -43,7 +47,7 @@ declare
   new_status text;
   v_alert_type text;
   v_product_name text;
-  v_secret text := '7f6150d99a738b8ee802ba0e5a7cba2dea5137f93fdd514a5146347bf60904b3';
+  v_secret text := 'REPLACE_WITH_STOCK_ALERT_WEBHOOK_SECRET';
   v_url text := 'https://factory-orders-5yuc3.ondigitalocean.app/api/telegram/stock-alert';
 begin
   old_status := case when old.stock_quantity <= 0 then 'out' when old.stock_quantity <= 30 then 'low' else 'ok' end;
