@@ -56,6 +56,31 @@ export async function sendMessage(chatId: number, text: string, buttons?: Inline
   }
 }
 
+// Сообщения уходят с parse_mode HTML, поэтому любой текст из базы или от
+// пользователя (названия, цвета, имена клиентов) нужно экранировать.
+export function escapeHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Заменяет текст и кнопки уже отправленного сообщения (навигация в /sklad
+// обновляет одно сообщение, а не засоряет чат новыми).
+export async function editMessageText(chatId: number, messageId: number, text: string, buttons?: InlineButton[][]) {
+  const body: Record<string, unknown> = { chat_id: chatId, message_id: messageId, text, parse_mode: 'HTML' };
+  body.reply_markup = { inline_keyboard: buttons ?? [] };
+
+  const res = await fetch(`${TELEGRAM_API}/bot${token()}/editMessageText`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const details = await res.text();
+    // Повторное нажатие на ту же кнопку даёт тот же текст — это не ошибка.
+    if (!details.includes('message is not modified')) console.error('telegram editMessageText failed', details);
+  }
+}
+
 export async function answerCallbackQuery(callbackQueryId: string, text?: string) {
   const res = await fetch(`${TELEGRAM_API}/bot${token()}/answerCallbackQuery`, {
     method: 'POST',
