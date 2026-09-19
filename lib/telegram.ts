@@ -81,6 +81,21 @@ export async function editMessageText(chatId: number, messageId: number, text: s
   }
 }
 
+// Убирает кнопки у уже отправленного сообщения (после нажатия): кнопка сразу
+// исчезает на экране, и по ней нельзя нажать второй раз.
+export async function removeKeyboard(chatId: number, messageId: number) {
+  const res = await fetch(`${TELEGRAM_API}/bot${token()}/editMessageReplyMarkup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId, reply_markup: { inline_keyboard: [] } }),
+  });
+
+  if (!res.ok) {
+    const details = await res.text();
+    if (!details.includes('message is not modified')) console.error('telegram removeKeyboard failed', details);
+  }
+}
+
 export async function answerCallbackQuery(callbackQueryId: string, text?: string) {
   const res = await fetch(`${TELEGRAM_API}/bot${token()}/answerCallbackQuery`, {
     method: 'POST',

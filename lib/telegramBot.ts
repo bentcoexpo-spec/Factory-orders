@@ -3,6 +3,7 @@ import { NO_PRINT, ProductVariant, stockStatus, variantLabel } from '@/lib/types
 import {
   sendMessage,
   editMessageText,
+  removeKeyboard,
   answerCallbackQuery,
   escapeHtml,
   InlineButton,
@@ -12,10 +13,13 @@ import {
 import {
   canonicalValue,
   Correction,
+  findSimilar,
   norm,
   parseOrderLine,
   ParseEvent,
   ParseResult,
+  phoneDigits,
+  phoneKey,
   sameProductName,
   sizeRank,
   sortSizes,
@@ -31,6 +35,10 @@ const HISTORY_ITEMS_PER_ORDER = 6;
 const TELEGRAM_MESSAGE_LIMIT = 3800;
 const TIMEZONE = process.env.TELEGRAM_TIMEZONE || 'Asia/Tashkent';
 const NAME_PATTERN = /^\p{L}[\p{L}\p{M}\s.'’ʻ-]{1,39}$/u;
+// Замок на пользователя (см. withUserLock).
+const USER_LOCK_TTL_MS = 10_000;
+const USER_LOCK_STEP_MS = 250;
+const USER_LOCK_MAX_WAIT_MS = 7_500;
 
 // Всё, что нужно обработчикам одного обновления: клиент базы, кто пишет,
 // на каком языке отвечать и как подписывать выдачу.
@@ -66,29 +74,57 @@ interface VariantRef {
   print_type: string | null;
 }
 
-// Кнопочный выбор, которого бот ждёт от пользователя.
-type PendingState =
-  | { type: 'confirm_new_client'; query: string }
-  | { type: 'pick_client'; candidates: { id: string; name: string; phone: string | null }[]; query: string }
-  | { type: 'pick_variant'; candidates: { variant: ProductVariant }[]; quantity: number; corrections?: Correction[] };
+interface ClientRef {
+  id: string;
+  name: string;
+  phone: string | null;
+}
 
-// Позиция, по которой запрошено больше, чем есть; бот ждёт нового количества.
+// Кнопочный выбор, которого бот ждёт от пользователя. У каждого вопроса свой
+// одноразовый код tok: он зашит в кнопки, и нажатие принимается, только если
+// код совпал с текущим — повторное нажатие или кнопка из старого сообщения
+// не может ответить на следующий вопрос.
+interface PickVariantPending {
+  type: 'pick_variant';
+  candidates: { variant: ProductVariant }[];
+  quantity: number;
+  corrections?: Correction[];
+  line: string;
+  truncated?: { shown: number; total: number };
+  tok: string;
+}
+
+type PendingState =
+  | { type: 'confirm_new_client'; query: string; tok: string }
+  | { type: 'pick_client'; candidates: ClientRef[]; query: string; tok: string }
+  | { type: 'confirm_phone_dup'; name: string; phone: string; existing: ClientRef; tok: string }
+  | PickVariantPending;
+
+// Позиция, по которой ждём подтверждения количества.
 interface QtyPrompt extends VariantRef {
   requested: number;
   corrections?: Correction[];
+  tok: string;
 }
 
 interface ProductFlowData {
   name?: string;
   color?: string | null;
   size?: string | null;
+  qty?: number;
   // Значения, показанные кнопками на текущем шаге (индекс из callback_data).
   options?: string[];
+  tok?: string;
+  // Введённое значение похоже на существующее — ждём «да, это оно» / «нет, новое».
+  suggest?: { kind: 'name' | 'color'; typed: string; options: string[] };
 }
 
 interface FlowData {
   qty?: QtyPrompt;
   ap?: ProductFlowData;
+  // Остальные строки многострочного ввода: каждая позиция подтверждается
+  // отдельно, поэтому следующая строка обрабатывается после ответа на вопрос.
+  queue?: string[];
 }
 
 interface Draft {
@@ -134,6 +170,8 @@ function now(): string {
   return new Date().toISOString();
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 function looksLikePhone(input: string): boolean {
   return /^[+\d\s\-()]+$/.test(input) && input.replace(/\D/g, '').length >= 5;
 }
@@ -143,6 +181,31 @@ function parsePositiveNumber(input: string): number | null {
   if (!m) return null;
   const value = Number(m[1].replace(',', '.'));
   return value > 0 ? value : null;
+}
+
+// Одноразовый код вопроса и разбор callback_data вида «база:код».
+function newTok(): string {
+  return Math.random().toString(36).slice(2, 6).padEnd(4, '0');
+}
+
+function splitCallback(data: string): { base: string; tok: string } {
+  const i = data.lastIndexOf(':');
+  return { base: data.slice(0, i), tok: data.slice(i + 1) };
+}
+
+// Отпечаток состава заказа: кнопки итога («Выдать», «Отмена») действуют, только
+// пока заказ выглядит так же, как в том итоге, где они были показаны.
+function orderRev(draft: Draft): string {
+  const s = `${draft.client_id ?? ''}|${(draft.items ?? [])
+    .map((i) => `${i.variantId}:${i.quantity}`)
+    .sort()
+    .join(',')}`;
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
 }
 
 // Название позиции для сообщений: «Майка — L, Белый» (уже экранировано).
@@ -220,6 +283,18 @@ async function updateDraft(ctx: Ctx, patch: Record<string, unknown>) {
     .eq('telegram_user_id', ctx.userId);
 }
 
+// Есть ли у пользователя начатое, но не завершённое действие.
+function hasUnfinishedWork(draft: Draft | null): boolean {
+  if (!draft) return false;
+  return (
+    draft.flow === 'add_product' ||
+    (draft.items?.length ?? 0) > 0 ||
+    !!draft.pending ||
+    !!draft.flow_data?.qty ||
+    !!draft.client_id
+  );
+}
+
 async function loadFinishedVariants(sb: SupabaseClient): Promise<ProductVariant[]> {
   const { data } = await sb.from('product_variants_view').select('*').eq('warehouse_type', 'finished_goods').limit(1000);
   return (data ?? []) as ProductVariant[];
@@ -228,6 +303,47 @@ async function loadFinishedVariants(sb: SupabaseClient): Promise<ProductVariant[
 async function freshStock(sb: SupabaseClient, variantId: string): Promise<number> {
   const { data } = await sb.from('product_variants').select('stock_quantity').eq('id', variantId).maybeSingle();
   return Number(data?.stock_quantity ?? 0);
+}
+
+// Обрабатывает по одному обновлению от пользователя за раз. Иначе два быстрых
+// сообщения подряд читают одно и то же состояние черновика и затирают друг
+// друга. Замок — это атомарный условный UPDATE в базе (работает между
+// экземплярами приложения) с TTL: если обработчик упал, замок сам истекает.
+// Если базу с замком использовать нельзя (нет колонки, сбой), работаем как
+// раньше, без замка, — молчание для кладовщика хуже гонки.
+async function withUserLock<T>(sb: SupabaseClient, userId: number, fn: () => Promise<T>): Promise<T> {
+  let acquired = false;
+  const started = Date.now();
+  try {
+    for (;;) {
+      const nowIso = new Date().toISOString();
+      const { data, error } = await sb
+        .from('telegram_sessions')
+        .update({ busy_until: new Date(Date.now() + USER_LOCK_TTL_MS).toISOString() })
+        .eq('telegram_user_id', userId)
+        .or(`busy_until.is.null,busy_until.lt.${nowIso}`)
+        .select('telegram_user_id');
+      if (error) {
+        console.error('telegram user lock unavailable', error.message);
+        break;
+      }
+      if (data && data.length > 0) {
+        acquired = true;
+        break;
+      }
+      if (Date.now() - started >= USER_LOCK_MAX_WAIT_MS) break;
+      await sleep(USER_LOCK_STEP_MS);
+    }
+    return await fn();
+  } finally {
+    if (acquired) {
+      try {
+        await sb.from('telegram_sessions').update({ busy_until: null }).eq('telegram_user_id', userId);
+      } catch (err) {
+        console.error('telegram user lock release failed', err);
+      }
+    }
+  }
 }
 
 // Неуверенно распознанные и нераспознанные слова сохраняются, чтобы по факту
@@ -272,12 +388,6 @@ async function handlePinAttempt(sb: SupabaseClient, telegramUserId: number, chat
     return;
   }
 
-  // /start и любые команды до входа просто просят PIN и не считаются неверной попыткой.
-  if (text.startsWith('/')) {
-    await sendMessage(chatId, both('pin.prompt'));
-    return;
-  }
-
   if (text.trim() === pin) {
     await sb.from('telegram_sessions').upsert({
       telegram_user_id: telegramUserId,
@@ -287,6 +397,18 @@ async function handlePinAttempt(sb: SupabaseClient, telegramUserId: number, chat
       onboarding: 'language',
     });
     await askLanguage(chatId);
+    return;
+  }
+
+  // Неверной попыткой считается только то, что похоже на PIN по форме: для
+  // PIN из цифр — строка из цифр не короче PIN, иначе — одно слово той же
+  // длины. Команды, слова («красный» в /add_product), строки заказа и короткие
+  // ответы («5» в вопросе о количестве) при истёкшей сессии — не попытки:
+  // иначе пять таких ответов подряд блокируют вход на 15 минут посреди работы.
+  const looksLikePin = /^\d+$/.test(pin) ? /^\d+$/.test(text) && text.length >= pin.length : !/\s/.test(text) && text.length === pin.length;
+  if (!looksLikePin) {
+    const draft = await getDraft(sb, telegramUserId);
+    await sendMessage(chatId, both(hasUnfinishedWork(draft) ? 'pin.expiredDraft' : 'pin.prompt'));
     return;
   }
 
@@ -326,6 +448,9 @@ async function finishOnboarding(sb: SupabaseClient, session: Session, chatId: nu
   await sb.from('telegram_sessions').update({ staff_name: name, onboarding: null }).eq('telegram_user_id', session.telegram_user_id);
   const lang = session.lang ?? 'ru';
   await sendMessage(chatId, t(lang, 'welcome', { name, help: raw(t(lang, 'help')) }));
+  // Незавершённое действие (заказ, добавление товара), начатое до истечения
+  // сессии, не теряется — бот напоминает о нём и продолжает с того же места.
+  await resumeDraft({ sb, userId: session.telegram_user_id, chatId, lang, staff: name });
 }
 
 async function handleOnboardingText(sb: SupabaseClient, session: Session, chatId: number, text: string, step: OnboardingStep) {
@@ -340,6 +465,39 @@ async function handleOnboardingText(sb: SupabaseClient, session: Session, chatId
     return;
   }
   await finishOnboarding(sb, session, chatId, name);
+}
+
+// Повторно показывает текущий шаг незавершённого действия (с новыми кодами кнопок).
+async function resumeDraft(ctx: Ctx) {
+  const draft = await getDraft(ctx.sb, ctx.userId);
+  if (!hasUnfinishedWork(draft) || !draft) return;
+  await say(ctx, 'resume.notice');
+
+  if (draft.flow === 'add_product') {
+    await resumeAddProduct(ctx, draft);
+    return;
+  }
+
+  const p = draft.pending;
+  if (p?.type === 'pick_variant') return sendPickVariant(ctx, await rotatePending(ctx, p));
+  if (p?.type === 'pick_client') return sendClientChoice(ctx, await rotatePending(ctx, p));
+  if (p?.type === 'confirm_new_client') return sendNewClientConfirm(ctx, await rotatePending(ctx, p));
+  if (p?.type === 'confirm_phone_dup') return sendPhoneDup(ctx, await rotatePending(ctx, p));
+  if (draft.step === 'awaiting_qty' && draft.flow_data?.qty) {
+    const outcome = await presentQty(ctx, draft);
+    if (outcome === 'rejected') await continueOrSummary(ctx, draft.flow_data?.queue ?? []);
+    return;
+  }
+  if (draft.step === 'awaiting_new_client_name') return say(ctx, 'order.askNewName');
+  if (draft.step === 'awaiting_new_client_phone') return say(ctx, 'order.askNewPhone');
+  if (draft.step === 'awaiting_client' || draft.step === 'awaiting_phone') return say(ctx, 'order.enterClient');
+  await showOrderSummary(ctx);
+}
+
+async function rotatePending<T extends PendingState>(ctx: Ctx, pending: T): Promise<T> {
+  const next = { ...pending, tok: newTok() };
+  await updateDraft(ctx, { pending: next });
+  return next;
 }
 
 // ---------------------------------------------------------------------------
@@ -456,7 +614,7 @@ async function handleSkladCallback(ctx: Ctx, messageId: number | undefined, data
 
 async function startNewOrder(ctx: Ctx) {
   const previous = await getDraft(ctx.sb, ctx.userId);
-  const hadWork = !!previous && (previous.items?.length > 0 || previous.flow === 'add_product');
+  const hadWork = !!previous && (previous.items?.length > 0 || previous.flow === 'add_product' || !!previous.flow_data?.qty);
 
   await ctx.sb.from('telegram_order_drafts').upsert({
     telegram_user_id: ctx.userId,
@@ -479,7 +637,7 @@ function clientLabel(c: { name: string; phone: string | null }) {
   return raw(`${escapeHtml(c.name)}${c.phone ? ' — ' + escapeHtml(c.phone) : ''}`);
 }
 
-async function selectClient(ctx: Ctx, client: { id: string; name: string; phone: string | null }, created: boolean) {
+async function selectClient(ctx: Ctx, client: ClientRef, created: boolean) {
   await updateDraft(ctx, {
     client_id: client.id,
     client_name: client.name,
@@ -490,6 +648,42 @@ async function selectClient(ctx: Ctx, client: { id: string; name: string; phone:
   await say(ctx, created ? 'order.clientCreated' : 'order.clientSelected', { client: clientLabel(client), help: itemsHelp(ctx) });
 }
 
+// Поиск по имени и по телефону. Телефон сравнивается по цифрам (последние 9),
+// чтобы «+998 90 123 45 67», «901234567» и «998901234567» находили одного клиента.
+// Без колонки phone_digits (миграция 014 не выполнена) ищет как раньше.
+async function findClients(sb: SupabaseClient, q: string, rawQuery: string): Promise<ClientRef[]> {
+  const base = `name.ilike.%${q}%,phone.ilike.%${q}%`;
+  if (phoneDigits(rawQuery).length >= 4) {
+    const res = await sb.from('clients').select('id, name, phone').or(`${base},phone_digits.ilike.%${phoneKey(rawQuery)}%`).limit(10);
+    if (!res.error) return (res.data ?? []) as ClientRef[];
+    console.error('telegram client search by digits failed, falling back', res.error.message);
+  }
+  const { data } = await sb.from('clients').select('id, name, phone').or(base).limit(10);
+  return (data ?? []) as ClientRef[];
+}
+
+async function sendNewClientConfirm(ctx: Ctx, pending: { query: string; tok: string }) {
+  await say(ctx, 'order.clientNotFound', { query: pending.query }, [
+    [{ text: tr(ctx, 'order.newClientBtn'), callback_data: `new_client:yes:${pending.tok}` }],
+    [{ text: tr(ctx, 'btn.cancel'), callback_data: `new_client:no:${pending.tok}` }],
+  ]);
+}
+
+async function sendClientChoice(ctx: Ctx, pending: { candidates: ClientRef[]; tok: string }) {
+  const buttons: InlineButton[][] = pending.candidates.map((c, i) => [
+    { text: `${c.name}${c.phone ? ' — ' + c.phone : ''}`, callback_data: `pick_client:${i}:${pending.tok}` },
+  ]);
+  buttons.push([{ text: tr(ctx, 'order.newClientBtn'), callback_data: `new_client:yes:${pending.tok}` }]);
+  await say(ctx, 'order.clientsFound', {}, buttons);
+}
+
+async function sendPhoneDup(ctx: Ctx, pending: { existing: ClientRef; tok: string }) {
+  await say(ctx, 'order.phoneExists', { client: clientLabel(pending.existing) }, [
+    [{ text: tr(ctx, 'order.useExistingBtn', { name: raw(pending.existing.name) }), callback_data: `dup:use:${pending.tok}` }],
+    [{ text: tr(ctx, 'order.createAnywayBtn'), callback_data: `dup:new:${pending.tok}` }],
+  ]);
+}
+
 async function handleClientSearch(ctx: Ctx, query: string) {
   const q = sanitizeIlike(query);
   if (!q) {
@@ -497,23 +691,18 @@ async function handleClientSearch(ctx: Ctx, query: string) {
     return;
   }
 
-  const { data: clients } = await ctx.sb.from('clients').select('id, name, phone').or(`name.ilike.%${q}%,phone.ilike.%${q}%`).limit(10);
+  const clients = await findClients(ctx.sb, q, query);
 
-  if (!clients || clients.length === 0) {
-    await updateDraft(ctx, { pending: { type: 'confirm_new_client', query: query.trim() } });
-    await say(ctx, 'order.clientNotFound', { query: query.trim() }, [
-      [{ text: tr(ctx, 'order.newClientBtn'), callback_data: 'new_client:yes' }],
-      [{ text: tr(ctx, 'btn.cancel'), callback_data: 'new_client:no' }],
-    ]);
+  if (clients.length === 0) {
+    const pending = { type: 'confirm_new_client' as const, query: query.trim(), tok: newTok() };
+    await updateDraft(ctx, { pending });
+    await sendNewClientConfirm(ctx, pending);
     return;
   }
 
-  await updateDraft(ctx, { pending: { type: 'pick_client', candidates: clients, query: query.trim() } });
-  const buttons: InlineButton[][] = clients.map((c, i) => [
-    { text: `${c.name}${c.phone ? ' — ' + c.phone : ''}`, callback_data: `pick_client:${i}` },
-  ]);
-  buttons.push([{ text: tr(ctx, 'order.newClientBtn'), callback_data: 'new_client:yes' }]);
-  await say(ctx, 'order.clientsFound', {}, buttons);
+  const pending = { type: 'pick_client' as const, candidates: clients, query: query.trim(), tok: newTok() };
+  await updateDraft(ctx, { pending });
+  await sendClientChoice(ctx, pending);
 }
 
 // Введённое похоже на телефон — дальше спрашиваем имя, иначе принимаем его за
@@ -528,7 +717,7 @@ async function beginNewClient(ctx: Ctx, query: string) {
   }
 }
 
-async function createClientAndContinue(ctx: Ctx, name: string, phone: string | null) {
+async function insertClient(ctx: Ctx, name: string, phone: string | null) {
   const { data: client, error } = await ctx.sb.from('clients').insert({ name: name.trim(), phone }).select().single();
   if (error || !client) {
     await say(ctx, 'order.clientCreateFailed');
@@ -537,26 +726,56 @@ async function createClientAndContinue(ctx: Ctx, name: string, phone: string | n
   await selectClient(ctx, client, true);
 }
 
+// Перед созданием клиента проверяем, нет ли уже клиента с таким же телефоном
+// (в другом формате): если есть, предлагаем использовать его, а не плодить дубль.
+async function createClientAndContinue(ctx: Ctx, name: string, phone: string | null) {
+  if (phone && phoneDigits(phone).length >= 7) {
+    const { data, error } = await ctx.sb.from('clients').select('id, name, phone').ilike('phone_digits', `%${phoneKey(phone)}%`).limit(1);
+    if (!error && data && data.length > 0) {
+      const pending = { type: 'confirm_phone_dup' as const, name: name.trim(), phone, existing: data[0] as ClientRef, tok: newTok() };
+      await updateDraft(ctx, { pending });
+      await sendPhoneDup(ctx, pending);
+      return;
+    }
+  }
+  await insertClient(ctx, name, phone);
+}
+
 function qtyInDraft(items: DraftItem[] | null, variantId: string): number {
   return (items ?? []).find((it) => it.variantId === variantId)?.quantity ?? 0;
 }
 
-// Проверяет остаток в момент ввода позиции и либо добавляет её в заказ,
-// либо спрашивает, сколько забрать. В остаток входит то, что уже набрано в
-// этом же заказе — списание произойдёт только при выдаче.
+// Каждая позиция подтверждается количеством ДО добавления в заказ — так
+// кладовщик успевает заметить лишний ноль. Бот показывает остаток и
+// спрашивает: хватает — «На складе 50 шт. Взять 50?» с кнопкой «Взять 50»,
+// не хватает — «Сколько забрать?» с кнопкой «Забрать <остаток>». Вместо
+// кнопки можно написать другое число. В остаток входит то, что уже набрано
+// в этом же заказе — списание произойдёт только при выдаче.
+// 'wait' — бот ждёт ответа, 'rejected' — товара нет в наличии совсем.
 async function proposeItem(
   ctx: Ctx,
   variant: VariantRef,
   requested: number,
-  corrections?: Correction[]
-): Promise<'added' | 'wait' | 'rejected'> {
+  corrections?: Correction[],
+  queue: string[] = []
+): Promise<'wait' | 'rejected'> {
   const draft = await getDraft(ctx.sb, ctx.userId);
   if (!draft || draft.flow !== 'order') return 'rejected';
+  const prompt: QtyPrompt = { ...variant, requested, corrections, tok: '' };
+  return presentQty(ctx, { ...draft, flow_data: { qty: prompt, queue } });
+}
 
-  const stock = await freshStock(ctx.sb, variant.id);
-  const already = qtyInDraft(draft.items, variant.id);
+// Показывает (или показывает заново) вопрос о количестве по draft.flow_data.qty.
+// Каждый показ выдаёт новый код кнопок, поэтому старые кнопки перестают работать.
+async function presentQty(ctx: Ctx, draft: Draft): Promise<'wait' | 'rejected'> {
+  const prompt = draft.flow_data?.qty;
+  if (!prompt) return 'rejected';
+  const queue = draft.flow_data?.queue ?? [];
+
+  const stock = await freshStock(ctx.sb, prompt.id);
+  const already = qtyInDraft(draft.items, prompt.id);
   const available = stock - already;
-  const title = raw(variantTitle(variant));
+  const title = raw(variantTitle(prompt));
 
   if (available <= 0) {
     const note = already > 0 ? tr(ctx, 'order.noStockNote', { stock: fmt(stock) }) : '';
@@ -564,25 +783,28 @@ async function proposeItem(
     return 'rejected';
   }
 
-  if (requested > available) {
-    const prompt: QtyPrompt = { ...variant, requested, corrections };
-    await updateDraft(ctx, { step: 'awaiting_qty', flow_data: { qty: prompt } });
-    const note = already > 0 ? tr(ctx, 'order.qtyNote', { already: fmt(already) }) : '';
+  const tok = newTok();
+  await updateDraft(ctx, { step: 'awaiting_qty', pending: null, flow_data: { qty: { ...prompt, tok }, queue } });
+  const note = raw(already > 0 ? tr(ctx, 'order.qtyNote', { already: fmt(already) }) : '');
+  const fix = fixNote(ctx, prompt.corrections);
+  const skipRow = [{ text: tr(ctx, 'order.skipItem'), callback_data: `qty:skip:${tok}` }];
+
+  if (prompt.requested > available) {
     await say(
       ctx,
       'order.qtyPrompt',
-      { title, requested: fmt(requested), available: fmt(available), note: raw(note), fix: fixNote(ctx, corrections) },
-      [
-        [{ text: tr(ctx, 'order.takeAll', { n: fmt(available) }), callback_data: 'qty:all' }],
-        [{ text: tr(ctx, 'order.skipItem'), callback_data: 'qty:skip' }],
-      ]
+      { title, requested: fmt(prompt.requested), available: fmt(available), note, fix },
+      [[{ text: tr(ctx, 'order.takeAll', { n: fmt(available) }), callback_data: `qty:all:${tok}` }], skipRow]
     );
-    return 'wait';
+  } else {
+    await say(
+      ctx,
+      'order.qtyConfirm',
+      { title, requested: fmt(prompt.requested), available: fmt(available), note, fix },
+      [[{ text: tr(ctx, 'order.take', { n: fmt(prompt.requested) }), callback_data: `qty:ok:${tok}` }], skipRow]
+    );
   }
-
-  await addItemToDraft(ctx, draft, variant, requested);
-  await say(ctx, 'order.added', { title, qty: fmt(requested), stock: fmt(stock), fix: fixNote(ctx, corrections) });
-  return 'added';
+  return 'wait';
 }
 
 async function addItemToDraft(ctx: Ctx, draft: Draft, variant: VariantRef, quantity: number) {
@@ -612,13 +834,14 @@ async function showOrderSummary(ctx: Ctx) {
   }
   const pcs = tr(ctx, 'pcs');
   const lines = draft.items.map((it) => `• ${itemTitle(it)} — ${fmt(it.quantity)} ${pcs}`);
+  const rev = orderRev(draft);
   await say(
     ctx,
     'order.summary',
     { client: clientLabel({ name: draft.client_name ?? '', phone: draft.client_phone }), lines: raw(lines.join('\n')) },
     [
-      [{ text: tr(ctx, 'order.issueBtn'), callback_data: 'issue:yes' }],
-      [{ text: tr(ctx, 'btn.cancel'), callback_data: 'issue:cancel' }],
+      [{ text: tr(ctx, 'order.issueBtn'), callback_data: `issue:yes:${rev}` }],
+      [{ text: tr(ctx, 'btn.cancel'), callback_data: `issue:cancel:${rev}` }],
     ]
   );
 }
@@ -650,84 +873,99 @@ async function handleAddItems(ctx: Ctx, text: string) {
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean);
+  await processLines(ctx, lines, false);
+}
+
+async function sendPickVariant(ctx: Ctx, pending: PickVariantPending) {
+  const buttons: InlineButton[][] = pending.candidates.map(({ variant: v }, idx) => [
+    { text: `${v.product_name} — ${variantLabel(v) ?? '—'} (${fmt(v.stock_quantity)} ${tr(ctx, 'pcs')})`, callback_data: `pick_variant:${idx}:${pending.tok}` },
+  ]);
+  const note = pending.truncated ? raw(tr(ctx, 'order.truncated', pending.truncated)) : '';
+  await say(ctx, 'order.pickVariant', { line: pending.line, note }, buttons);
+}
+
+// Разбирает строки по очереди. Останавливается на первой строке, которой
+// нужен ответ пользователя (выбор варианта или подтверждение количества),
+// а остальные откладывает в очередь — они продолжатся после ответа.
+// summaryAtEnd — показать итог заказа, если очередь закончилась без вопросов
+// (после того как пользователь уже ответил на предыдущие).
+async function processLines(ctx: Ctx, lines: string[], summaryAtEnd: boolean) {
   const variants = await loadFinishedVariants(ctx.sb);
 
-  let addedAny = false;
   for (let i = 0; i < lines.length; i++) {
+    const rest = lines.slice(i + 1);
     const result = parseOrderLine(lines[i], variants);
     await logParseEvents(ctx, lines[i], result.events);
-    let waiting = false;
 
     if (result.kind === 'error') {
       await sendMessage(ctx.chatId, parseErrorText(ctx, result));
     } else if (result.kind === 'exact') {
-      const outcome = await proposeItem(ctx, refOf(result.variant), result.quantity, result.corrections);
-      if (outcome === 'added') addedAny = true;
-      waiting = outcome === 'wait';
+      const outcome = await proposeItem(ctx, refOf(result.variant), result.quantity, result.corrections, rest);
+      if (outcome === 'wait') return;
     } else {
-      await updateDraft(ctx, {
-        pending: {
-          type: 'pick_variant',
-          candidates: result.candidates.map((variant) => ({ variant })),
-          quantity: result.quantity,
-          corrections: result.corrections,
-        },
-      });
-      const buttons: InlineButton[][] = result.candidates.map((v, idx) => [
-        { text: `${v.product_name} — ${variantLabel(v) ?? '—'} (${fmt(v.stock_quantity)} ${tr(ctx, 'pcs')})`, callback_data: `pick_variant:${idx}` },
-      ]);
-      const note = result.truncated ? raw(tr(ctx, 'order.truncated', result.truncated)) : '';
-      await say(ctx, 'order.pickVariant', { line: lines[i], note }, buttons);
-      waiting = true;
-    }
-
-    if (waiting) {
-      const remaining = lines.length - i - 1;
-      if (remaining > 0) await say(ctx, 'order.restLines', { n: remaining });
+      const pending: PickVariantPending = {
+        type: 'pick_variant',
+        candidates: result.candidates.map((variant) => ({ variant })),
+        quantity: result.quantity,
+        corrections: result.corrections,
+        line: lines[i],
+        truncated: result.truncated,
+        tok: newTok(),
+      };
+      await updateDraft(ctx, { pending, flow_data: { queue: rest } });
+      await sendPickVariant(ctx, pending);
       return;
     }
   }
 
-  if (addedAny) await showOrderSummary(ctx);
+  if (summaryAtEnd) await showOrderSummary(ctx);
 }
 
-// Ответ на «Сколько забрать?»: число или кнопка.
-async function resolveQty(ctx: Ctx, draft: Draft, choice: number | 'all' | 'skip') {
+// Позиция разрешена (добавлена, пропущена или отклонена): берёмся за
+// следующую строку очереди, а если очередь пуста — показываем итог заказа.
+async function continueOrSummary(ctx: Ctx, queue: string[]) {
+  await updateDraft(ctx, { step: 'adding_items', pending: null, flow_data: null });
+  if (queue.length > 0) await processLines(ctx, queue, true);
+  else await showOrderSummary(ctx);
+}
+
+// Ответ на вопрос о количестве: число, «Взять N» (ok — запрошенное),
+// «Забрать <остаток>» (all) или «Пропустить».
+async function resolveQty(ctx: Ctx, draft: Draft, choice: number | 'ok' | 'all' | 'skip') {
   const prompt = draft.flow_data?.qty;
   if (!prompt) {
     await say(ctx, 'order.noQtyPending');
     return;
   }
+  const queue = draft.flow_data?.queue ?? [];
 
   if (choice === 'skip') {
-    await updateDraft(ctx, { step: 'adding_items', flow_data: null });
     await say(ctx, 'order.skipped');
-    await showOrderSummary(ctx);
+    await continueOrSummary(ctx, queue);
     return;
   }
 
   const stock = await freshStock(ctx.sb, prompt.id);
   const available = stock - qtyInDraft(draft.items, prompt.id);
-  const quantity = choice === 'all' ? available : choice;
+  const quantity = choice === 'all' ? available : choice === 'ok' ? prompt.requested : choice;
   const title = raw(variantTitle(prompt));
 
   if (quantity <= 0) {
-    await updateDraft(ctx, { step: 'adding_items', flow_data: null });
     await say(ctx, 'order.noStockLeft', { title });
-    await showOrderSummary(ctx);
+    await continueOrSummary(ctx, queue);
     return;
   }
   if (quantity > available) {
     await say(ctx, 'order.qtyTooMany', { available: fmt(available) }, [
-      [{ text: tr(ctx, 'order.takeAll', { n: fmt(available) }), callback_data: 'qty:all' }],
-      [{ text: tr(ctx, 'order.skipItem'), callback_data: 'qty:skip' }],
+      [{ text: tr(ctx, 'order.takeAll', { n: fmt(available) }), callback_data: `qty:all:${prompt.tok}` }],
+      [{ text: tr(ctx, 'order.skipItem'), callback_data: `qty:skip:${prompt.tok}` }],
     ]);
     return;
   }
 
   await addItemToDraft(ctx, draft, prompt, quantity);
   await say(ctx, 'order.added', { title, qty: fmt(quantity), stock: fmt(stock), fix: fixNote(ctx, prompt.corrections) });
-  await showOrderSummary(ctx);
+  await continueOrSummary(ctx, queue);
 }
 
 async function restoreDraft(sb: SupabaseClient, draft: Draft) {
@@ -857,16 +1095,49 @@ async function issueOrder(ctx: Ctx) {
   });
 }
 
+// Кнопки итога: действуют, только если состав заказа не изменился с момента
+// показа этого итога. Иначе старая кнопка «Выдать» выдала бы то, чего кладовщик
+// на том итоге не видел, — вместо этого бот показывает актуальный итог.
+async function handleIssueCallback(ctx: Ctx, base: string, tok: string) {
+  const draft = await getDraft(ctx.sb, ctx.userId);
+  if (!draft || draft.flow !== 'order') {
+    await say(ctx, 'order.alreadyDone');
+    return;
+  }
+  if (orderRev(draft) !== tok) {
+    await say(ctx, 'order.summaryChanged');
+    await showOrderSummary(ctx);
+    return;
+  }
+  if (base === 'issue:yes') {
+    await issueOrder(ctx);
+  } else {
+    await ctx.sb.from('telegram_order_drafts').delete().eq('telegram_user_id', ctx.userId).eq('flow', 'order');
+    await say(ctx, 'order.cancelled');
+  }
+}
+
 // ---------------------------------------------------------------------------
-// /add_product — добавление товара на склад: название → цвет → размер → количество
+// /add_product — добавление товара на склад: название → цвет → размер →
+// количество → подтверждение
 // ---------------------------------------------------------------------------
+
+async function finishedProductNames(sb: SupabaseClient): Promise<string[]> {
+  const { data: products } = await sb.from('products').select('name').eq('warehouse_type', 'finished_goods').order('name');
+  return (products ?? []).map((p: { name: string }) => p.name);
+}
+
+async function sendNamePrompt(ctx: Ctx, names: string[], tok: string, prefix = '') {
+  const buttons: InlineButton[][] = names.map((name, i) => [{ text: name, callback_data: `ap:n:${i}:${tok}` }]);
+  await sendMessage(ctx.chatId, prefix + tr(ctx, 'ap.start'), buttons.length > 0 ? buttons : undefined);
+}
 
 async function startAddProduct(ctx: Ctx) {
   const previous = await getDraft(ctx.sb, ctx.userId);
-  const hadWork = !!previous && (previous.items?.length > 0 || previous.flow === 'add_product');
+  const hadWork = !!previous && (previous.items?.length > 0 || previous.flow === 'add_product' || !!previous.flow_data?.qty);
 
-  const { data: products } = await ctx.sb.from('products').select('name').eq('warehouse_type', 'finished_goods').order('name');
-  const names = (products ?? []).map((p: { name: string }) => p.name);
+  const names = await finishedProductNames(ctx.sb);
+  const tok = newTok();
 
   await ctx.sb.from('telegram_order_drafts').upsert({
     telegram_user_id: ctx.userId,
@@ -877,12 +1148,10 @@ async function startAddProduct(ctx: Ctx) {
     client_phone: null,
     items: [],
     pending: null,
-    flow_data: { ap: { options: names } },
+    flow_data: { ap: { options: names, tok } },
     updated_at: now(),
   });
-
-  const buttons: InlineButton[][] = names.map((name, i) => [{ text: name, callback_data: `ap:n:${i}` }]);
-  await sendMessage(ctx.chatId, (hadWork ? tr(ctx, 'prevCancelled') : '') + tr(ctx, 'ap.start'), buttons.length > 0 ? buttons : undefined);
+  await sendNamePrompt(ctx, names, tok, hadWork ? tr(ctx, 'prevCancelled') : '');
 }
 
 async function loadProductVariants(sb: SupabaseClient, productName: string): Promise<{ id: string | null; variants: ProductVariant[] }> {
@@ -899,10 +1168,11 @@ async function askColor(ctx: Ctx, name: string) {
   const canonical = Array.from(new Map(colors.map((c) => [norm(c), canonicalValue(c, colors, 'color')])).values()).sort((a, b) =>
     a.localeCompare(b, 'ru')
   );
-  await updateDraft(ctx, { step: 'ap_color', flow_data: { ap: { name, options: canonical } } });
+  const tok = newTok();
+  await updateDraft(ctx, { step: 'ap_color', flow_data: { ap: { name, options: canonical, tok } } });
 
-  const buttons: InlineButton[][] = canonical.map((c, i) => [{ text: c, callback_data: `ap:c:${i}` }]);
-  buttons.push([{ text: tr(ctx, 'ap.noColorBtn'), callback_data: 'ap:c:none' }]);
+  const buttons: InlineButton[][] = canonical.map((c, i) => [{ text: c, callback_data: `ap:c:${i}:${tok}` }]);
+  buttons.push([{ text: tr(ctx, 'ap.noColorBtn'), callback_data: `ap:c:none:${tok}` }]);
   await say(ctx, 'ap.color', { name, isNew: id ? '' : raw(tr(ctx, 'ap.new')) }, buttons);
 }
 
@@ -910,26 +1180,77 @@ async function askSize(ctx: Ctx, draft: Draft, color: string | null) {
   const ap = draft.flow_data?.ap ?? {};
   const { variants } = await loadProductVariants(ctx.sb, ap.name ?? '');
   const sizes = sortSizes(Array.from(new Set(variants.map((v) => v.size).filter(Boolean) as string[])));
-  await updateDraft(ctx, { step: 'ap_size', flow_data: { ap: { ...ap, color, options: sizes } } });
+  const tok = newTok();
+  await updateDraft(ctx, { step: 'ap_size', flow_data: { ap: { name: ap.name, color, options: sizes, tok } } });
 
   const buttons: InlineButton[][] = [];
   for (let i = 0; i < sizes.length; i += 3) {
-    buttons.push(sizes.slice(i, i + 3).map((s, j) => ({ text: s, callback_data: `ap:s:${i + j}` })));
+    buttons.push(sizes.slice(i, i + 3).map((s, j) => ({ text: s, callback_data: `ap:s:${i + j}:${tok}` })));
   }
-  buttons.push([{ text: tr(ctx, 'ap.noSizeBtn'), callback_data: 'ap:s:none' }]);
+  buttons.push([{ text: tr(ctx, 'ap.noSizeBtn'), callback_data: `ap:s:none:${tok}` }]);
   await say(ctx, 'ap.size', { color: color ?? tr(ctx, 'ap.noColorLabel') }, buttons);
 }
 
 async function askQuantity(ctx: Ctx, draft: Draft, size: string | null) {
   const ap = draft.flow_data?.ap ?? {};
-  await updateDraft(ctx, { step: 'ap_qty', flow_data: { ap: { ...ap, size, options: [] } } });
+  await updateDraft(ctx, { step: 'ap_qty', flow_data: { ap: { name: ap.name, color: ap.color, size, tok: newTok() } } });
   await say(ctx, 'ap.qty', { size: size ?? tr(ctx, 'ap.noSizeLabel') });
 }
 
-async function finalizeProduct(ctx: Ctx, draft: Draft, quantity: number) {
-  const { sb } = ctx;
+// Введённое значение похоже на существующее, но не совпадает: спрашиваем, не
+// его ли имелось в виду, прежде чем создавать новый товар или цвет.
+async function askSimilar(ctx: Ctx, kind: 'name' | 'color', typed: string, options: string[]) {
+  const draft = await getDraft(ctx.sb, ctx.userId);
+  const ap = draft?.flow_data?.ap ?? {};
+  const tok = newTok();
+  await updateDraft(ctx, { flow_data: { ap: { ...ap, suggest: { kind, typed, options }, tok } } });
+
+  const buttons: InlineButton[][] = options.map((o, i) => [{ text: o, callback_data: `ap:sim:${i}:${tok}` }]);
+  buttons.push([{ text: tr(ctx, 'ap.createNewBtn', { typed: raw(typed) }), callback_data: `ap:sim:new:${tok}` }]);
+  await say(ctx, kind === 'name' ? 'ap.similarName' : 'ap.similarColor', { typed }, buttons);
+}
+
+// Итог перед записью на склад: видно, что именно и сколько добавится, что
+// товар/цвет/размер новые и как изменится остаток уже существующего варианта.
+async function askConfirm(ctx: Ctx, draft: Draft, quantity: number) {
   const ap = draft.flow_data?.ap;
   if (!ap?.name) {
+    await say(ctx, 'ap.missingData');
+    return;
+  }
+  const color = ap.color ?? null;
+  const size = ap.size ?? null;
+  const { id, variants } = await loadProductVariants(ctx.sb, ap.name);
+
+  let flags = '';
+  let stock = '';
+  if (!id) {
+    flags += tr(ctx, 'ap.flagNewProduct');
+  } else {
+    if (color && !variants.some((v) => norm(v.color) === norm(color))) flags += tr(ctx, 'ap.flagNewColor');
+    if (size && !variants.some((v) => norm(v.size) === norm(size))) flags += tr(ctx, 'ap.flagNewSize');
+    const existing = variants.find((v) => norm(v.color) === norm(color) && norm(v.size) === norm(size) && v.print_type === NO_PRINT);
+    if (existing) {
+      const before = Number(existing.stock_quantity);
+      stock = tr(ctx, 'ap.stockChange', { before: fmt(before), after: fmt(before + quantity) });
+    }
+  }
+
+  const tok = newTok();
+  await updateDraft(ctx, { step: 'ap_confirm', flow_data: { ap: { name: ap.name, color, size, qty: quantity, tok } } });
+  const label = variantLabel({ color, size, print_type: NO_PRINT });
+  const title = raw(`${escapeHtml(ap.name)}${label ? ' — ' + escapeHtml(label) : ''}`);
+  await say(ctx, 'ap.confirm', { title, qty: fmt(quantity), flags: raw(flags), stock: raw(stock) }, [
+    [{ text: tr(ctx, 'ap.saveBtn'), callback_data: `ap:ok:${tok}` }],
+    [{ text: tr(ctx, 'btn.cancel'), callback_data: `ap:no:${tok}` }],
+  ]);
+}
+
+async function finalizeProduct(ctx: Ctx, draft: Draft) {
+  const { sb } = ctx;
+  const ap = draft.flow_data?.ap;
+  const quantity = ap?.qty;
+  if (!ap?.name || !quantity) {
     await say(ctx, 'ap.missingData');
     return;
   }
@@ -1012,44 +1333,79 @@ async function finalizeProduct(ctx: Ctx, draft: Draft, quantity: number) {
   await say(ctx, 'ap.raced');
 }
 
-async function handleAddProductText(ctx: Ctx, draft: Draft, text: string) {
-  const ap = draft.flow_data?.ap ?? {};
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
 
+async function handleAddProductText(ctx: Ctx, draft: Draft, text: string) {
   if (draft.step === 'ap_name') {
     const { data: products } = await ctx.sb.from('products').select('name');
     const names = (products ?? []).map((p: { name: string }) => p.name);
     const typed = text.trim().replace(/\s+/g, ' ');
     const existing = names.find((n: string) => sameProductName(typed, n));
-    await askColor(ctx, existing ?? typed.charAt(0).toUpperCase() + typed.slice(1));
-  } else if (draft.step === 'ap_color') {
-    const { variants } = await loadProductVariants(ctx.sb, ap.name ?? '');
+    if (existing) return askColor(ctx, existing);
+    const created = capitalize(typed);
+    const similar = findSimilar(created, names);
+    if (similar.length > 0) return askSimilar(ctx, 'name', created, similar);
+    return askColor(ctx, created);
+  }
+
+  if (draft.step === 'ap_color') {
     const all = await loadFinishedVariants(ctx.sb);
-    const color = canonicalValue(text, [...variants, ...all].map((v) => v.color), 'color');
-    await askSize(ctx, draft, color);
-  } else if (draft.step === 'ap_size') {
+    const known = all.map((v) => v.color);
+    const color = canonicalValue(text, known, 'color');
+    const knownList = Array.from(new Set(known.filter(Boolean) as string[]));
+    const exists = knownList.some((c) => norm(c) === norm(color));
+    if (!exists) {
+      const similar = findSimilar(color, knownList);
+      if (similar.length > 0) return askSimilar(ctx, 'color', color, similar);
+    }
+    return askSize(ctx, draft, color);
+  }
+
+  if (draft.step === 'ap_size') {
     const all = await loadFinishedVariants(ctx.sb);
     const size = canonicalValue(text, all.map((v) => v.size), 'size');
-    await askQuantity(ctx, draft, size);
-  } else if (draft.step === 'ap_qty') {
+    return askQuantity(ctx, draft, size);
+  }
+
+  if (draft.step === 'ap_qty' || draft.step === 'ap_confirm') {
     const quantity = parsePositiveNumber(text);
     if (!quantity) {
-      await say(ctx, 'ap.qtyInvalid');
+      await say(ctx, draft.step === 'ap_qty' ? 'ap.qtyInvalid' : 'ap.confirmHint');
       return;
     }
-    await finalizeProduct(ctx, draft, quantity);
-  } else {
-    await say(ctx, 'ap.startOver');
+    return askConfirm(ctx, draft, quantity);
   }
+
+  await say(ctx, 'ap.startOver');
 }
 
-async function handleAddProductCallback(ctx: Ctx, data: string) {
-  const draft = await getDraft(ctx.sb, ctx.userId);
-  if (!draft || draft.flow !== 'add_product') {
+async function handleAddProductCallback(ctx: Ctx, draft: Draft | null, base: string, tok: string) {
+  const ap = draft?.flow_data?.ap;
+  if (!draft || draft.flow !== 'add_product' || !ap || ap.tok !== tok) {
     await say(ctx, 'ap.stale');
     return;
   }
-  const [, kind, rawIdx] = data.split(':');
-  const ap = draft.flow_data?.ap ?? {};
+  const [, kind, rawIdx] = base.split(':');
+
+  if (kind === 'ok' && draft.step === 'ap_confirm') return finalizeProduct(ctx, draft);
+  if (kind === 'no' && draft.step === 'ap_confirm') {
+    await ctx.sb.from('telegram_order_drafts').delete().eq('telegram_user_id', ctx.userId);
+    await say(ctx, 'ap.cancelled');
+    return;
+  }
+
+  if (kind === 'sim' && ap.suggest) {
+    const chosen = rawIdx === 'new' ? ap.suggest.typed : ap.suggest.options[Number(rawIdx)];
+    if (chosen === undefined) {
+      await say(ctx, 'ap.pickFailed');
+      return;
+    }
+    if (ap.suggest.kind === 'name') return askColor(ctx, chosen);
+    return askSize(ctx, draft, chosen);
+  }
+
   const picked = rawIdx === 'none' ? null : (ap.options ?? [])[Number(rawIdx)];
   if (rawIdx !== 'none' && picked === undefined) {
     await say(ctx, 'ap.pickFailed');
@@ -1060,6 +1416,24 @@ async function handleAddProductCallback(ctx: Ctx, data: string) {
   else if (kind === 'c' && draft.step === 'ap_color') await askSize(ctx, draft, picked);
   else if (kind === 's' && draft.step === 'ap_size') await askQuantity(ctx, draft, picked);
   else await say(ctx, 'ap.staleStep');
+}
+
+// Повторно показывает текущий шаг /add_product (после повторного входа).
+async function resumeAddProduct(ctx: Ctx, draft: Draft) {
+  const ap = draft.flow_data?.ap ?? {};
+  if (ap.suggest) return askSimilar(ctx, ap.suggest.kind, ap.suggest.typed, ap.suggest.options);
+
+  if (draft.step === 'ap_name') {
+    const names = await finishedProductNames(ctx.sb);
+    const tok = newTok();
+    await updateDraft(ctx, { flow_data: { ap: { options: names, tok } } });
+    return sendNamePrompt(ctx, names, tok);
+  }
+  if (draft.step === 'ap_color' && ap.name) return askColor(ctx, ap.name);
+  if (draft.step === 'ap_size') return askSize(ctx, draft, ap.color ?? null);
+  if (draft.step === 'ap_qty') return say(ctx, 'ap.qty', { size: ap.size ?? tr(ctx, 'ap.noSizeLabel') });
+  if (draft.step === 'ap_confirm' && ap.qty) return askConfirm(ctx, draft, ap.qty);
+  await say(ctx, 'ap.startOver');
 }
 
 // ---------------------------------------------------------------------------
@@ -1160,35 +1534,43 @@ async function handleCallbackQuery(sb: SupabaseClient, cq: TelegramCallbackQuery
   if (data.startsWith('lang:') || data.startsWith('name:')) return; // устаревшая кнопка входа
 
   const ctx: Ctx = { sb, userId, chatId, lang: session.lang!, staff: session.staff_name! };
+  await withUserLock(sb, userId, () => routeCallback(ctx, cq));
+}
+
+async function routeCallback(ctx: Ctx, cq: TelegramCallbackQuery) {
+  const { sb, userId } = ctx;
+  const data = cq.data ?? '';
   const messageId = cq.message?.message_id;
 
-  // Эти кнопки не требуют черновика заказа.
+  // Навигация по складу ничего не меняет и не привязана к вопросам.
   if (data.startsWith('sk:')) {
     await handleSkladCallback(ctx, messageId, data);
     return;
   }
-  if (data.startsWith('ap:')) {
-    await handleAddProductCallback(ctx, data);
-    return;
-  }
-  if (data === 'issue:yes') {
-    await issueOrder(ctx);
-    return;
-  }
-  if (data === 'issue:cancel') {
-    await sb.from('telegram_order_drafts').delete().eq('telegram_user_id', userId).eq('flow', 'order');
-    await say(ctx, 'order.cancelled');
+
+  // Остальные кнопки — ответы на вопросы бота. Нажатую кнопку сразу убираем с
+  // экрана, а принимается ответ, только если код вопроса совпал с текущим.
+  if (messageId) await removeKeyboard(ctx.chatId, messageId);
+  const { base, tok } = splitCallback(data);
+
+  if (base === 'issue:yes' || base === 'issue:cancel') {
+    await handleIssueCallback(ctx, base, tok);
     return;
   }
 
   const draft = await getDraft(sb, userId);
 
-  if (data.startsWith('qty:')) {
-    if (!draft || draft.flow !== 'order' || draft.step !== 'awaiting_qty') {
+  if (base.startsWith('ap:')) {
+    await handleAddProductCallback(ctx, draft, base, tok);
+    return;
+  }
+
+  if (base.startsWith('qty:')) {
+    if (!draft || draft.flow !== 'order' || draft.step !== 'awaiting_qty' || draft.flow_data?.qty?.tok !== tok) {
       await say(ctx, 'staleAction');
       return;
     }
-    await resolveQty(ctx, draft, data === 'qty:all' ? 'all' : 'skip');
+    await resolveQty(ctx, draft, base === 'qty:all' ? 'all' : base === 'qty:ok' ? 'ok' : 'skip');
     return;
   }
 
@@ -1197,20 +1579,24 @@ async function handleCallbackQuery(sb: SupabaseClient, cq: TelegramCallbackQuery
     return;
   }
   const pending = draft.pending;
+  if (pending.tok !== tok) {
+    await say(ctx, 'staleAction');
+    return;
+  }
 
-  if (data === 'new_client:no') {
+  if (base === 'new_client:no') {
     await updateDraft(ctx, { pending: null, client_phone: null, client_name: null, step: 'awaiting_client' });
     await say(ctx, 'order.reenterClient');
     return;
   }
 
-  if (data === 'new_client:yes' && (pending.type === 'confirm_new_client' || pending.type === 'pick_client')) {
+  if (base === 'new_client:yes' && (pending.type === 'confirm_new_client' || pending.type === 'pick_client')) {
     await beginNewClient(ctx, pending.query);
     return;
   }
 
-  if (data.startsWith('pick_client:') && pending.type === 'pick_client') {
-    const client = pending.candidates[Number(data.split(':')[1])];
+  if (base.startsWith('pick_client:') && pending.type === 'pick_client') {
+    const client = pending.candidates[Number(base.split(':')[1])];
     if (!client) {
       await say(ctx, 'order.clientPickFailed');
       return;
@@ -1219,15 +1605,22 @@ async function handleCallbackQuery(sb: SupabaseClient, cq: TelegramCallbackQuery
     return;
   }
 
-  if (data.startsWith('pick_variant:') && pending.type === 'pick_variant') {
-    const candidate = pending.candidates[Number(data.split(':')[1])];
+  if (pending.type === 'confirm_phone_dup' && (base === 'dup:use' || base === 'dup:new')) {
+    if (base === 'dup:use') await selectClient(ctx, pending.existing, false);
+    else await insertClient(ctx, pending.name, pending.phone);
+    return;
+  }
+
+  if (base.startsWith('pick_variant:') && pending.type === 'pick_variant') {
+    const candidate = pending.candidates[Number(base.split(':')[1])];
     if (!candidate) {
       await say(ctx, 'order.variantPickFailed');
       return;
     }
+    const queue = draft.flow_data?.queue ?? [];
     await updateDraft(ctx, { pending: null });
-    const outcome = await proposeItem(ctx, refOf(candidate.variant), pending.quantity, pending.corrections);
-    if (outcome === 'added') await showOrderSummary(ctx);
+    const outcome = await proposeItem(ctx, refOf(candidate.variant), pending.quantity, pending.corrections, queue);
+    if (outcome === 'rejected') await continueOrSummary(ctx, queue);
     return;
   }
 
@@ -1270,6 +1663,11 @@ export async function handleUpdate(update: TelegramUpdate) {
   }
 
   const ctx: Ctx = { sb, userId, chatId, lang: session.lang!, staff: session.staff_name! };
+  await withUserLock(sb, userId, () => routeMessage(ctx, text));
+}
+
+async function routeMessage(ctx: Ctx, text: string) {
+  const { sb, userId } = ctx;
 
   if (text.startsWith('/')) {
     // В группах Telegram дописывает имя бота: /sklad@my_bot.

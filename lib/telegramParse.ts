@@ -156,6 +156,17 @@ export function sameProductName(typed: string, existing: string): boolean {
   return a === b || translit(a) === b;
 }
 
+// Телефон только цифрами и «ключ» для поиска: последние 9 цифр номера, чтобы
+// «+998 90 123 45 67», «998901234567» и «901234567» совпадали между собой.
+export function phoneDigits(value: string | null | undefined): string {
+  return (value ?? '').replace(/\D/g, '');
+}
+
+export function phoneKey(value: string | null | undefined): string {
+  const digits = phoneDigits(value);
+  return digits.length > 9 ? digits.slice(-9) : digits;
+}
+
 function uzColorWords(token: string): string[] | null {
   if (!isLatin(token)) return null;
   if (UZ_COLORS[token]) return UZ_COLORS[token];
@@ -211,6 +222,38 @@ function bestMatch(word: string, token: string): Match | null {
     if (adjusted && (!best || adjusted.cost < best.cost)) best = adjusted;
   }
   return best;
+}
+
+// Существующие значения (названия товаров, цвета), на которые введённое
+// слово похоже, но не совпадает с ними: опечатка («футблка») либо часть
+// более длинного названия («футболка» ~ «Футболка Лайкра»). Для /add_product:
+// прежде чем создавать новое значение, бот спрашивает, не это ли имелось в виду.
+export function findSimilar(typed: string, candidates: string[], max = 3): string[] {
+  const t = norm(typed);
+  if (!t) return [];
+  const typedWords = t.split(' ');
+  const forms = isLatin(t.replace(/ /g, '')) ? [t, translit(t)] : [t];
+  const seen = new Set<string>();
+  const scored: { value: string; score: number }[] = [];
+
+  for (const candidate of candidates) {
+    const key = norm(candidate);
+    if (!key || key === t || seen.has(key)) continue;
+    seen.add(key);
+
+    // Допуск строже, чем при разборе заказа: здесь ошибочная подсказка стоит лишнего клика,
+    // а пропущенная — мусорного товара, поэтому «серый» не должен предлагать «черный».
+    const tol = key.length <= 3 ? 0 : key.length <= 8 ? 1 : key.length <= 12 ? 2 : 3;
+    let score = Infinity;
+    for (const form of forms) {
+      const d = editDistance(form, key);
+      if (d <= tol) score = Math.min(score, d);
+    }
+    const words = key.split(' ');
+    if (score === Infinity && typedWords.every((w) => words.some((cw) => { const m = bestMatch(cw, w); return !!m && (!m.fuzzy || m.cost <= 1); }))) score = 1.5;
+    if (score !== Infinity) scored.push({ value: candidate, score });
+  }
+  return scored.sort((a, b) => a.score - b.score).slice(0, max).map((x) => x.value);
 }
 
 export interface Correction {
