@@ -108,7 +108,12 @@ export default function OrderDetailPage() {
           <StatusBadge status={order.status} />
         </div>
         <p className="mt-1 text-sm text-slate-500">Создан {formatDate(order.created_at)}</p>
-        {order.issued_at && <p className="text-sm text-slate-500">Выдан {formatDate(order.issued_at)}</p>}
+        {order.issued_at && (
+          <p className="text-sm text-slate-500">
+            Выдан {formatDate(order.issued_at)}
+            {order.issued_by_name && <span className="font-medium text-slate-700"> · выдал {order.issued_by_name}</span>}
+          </p>
+        )}
         {order.closed_at && <p className="text-sm text-slate-500">Закрыт {formatDate(order.closed_at)}</p>}
         {order.completion_reason && (
           <p className="mt-1 text-sm font-medium text-amber-600">

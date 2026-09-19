@@ -90,6 +90,9 @@ function HistoryContent() {
                   {o.completion_reason && (
                     <span className="ml-2 text-xs text-amber-600">{COMPLETION_REASON_LABELS[o.completion_reason]}</span>
                   )}
+                  {tab === 'issued' && o.issued_by_name && (
+                    <span className="ml-2 text-xs text-slate-500">выдал {o.issued_by_name}</span>
+                  )}
                 </div>
                 <span className="text-sm text-slate-500">{date ? formatDate(date) : '—'}</span>
               </Link>

@@ -105,6 +105,9 @@ export interface OrderView {
   issued_at: string | null;
   completion_reason: CompletionReason | null;
   closed_at: string | null;
+  // Имя кладовщика, выдавшего заказ через Telegram-бота (у заказов, выданных
+  // через сайт, и у прежних заказов — null).
+  issued_by_name: string | null;
 }
 
 // Ряд из stock_receipts_view — запись в истории поступлений.

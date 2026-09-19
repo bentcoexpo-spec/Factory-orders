@@ -9,7 +9,18 @@ import {
   TelegramUpdate,
   TelegramCallbackQuery,
 } from '@/lib/telegram';
-import { canonicalValue, norm, parseOrderLine, sizeRank, sortSizes } from '@/lib/telegramParse';
+import {
+  canonicalValue,
+  Correction,
+  norm,
+  parseOrderLine,
+  ParseEvent,
+  ParseResult,
+  sameProductName,
+  sizeRank,
+  sortSizes,
+} from '@/lib/telegramParse';
+import { both, Lang, MessageKey, Params, raw, t } from '@/lib/telegramI18n';
 
 const APP_URL = 'https://factory-orders-5yuc3.ondigitalocean.app';
 const SESSION_HOURS = 24;
@@ -19,14 +30,21 @@ const HISTORY_LIMIT = 15;
 const HISTORY_ITEMS_PER_ORDER = 6;
 const TELEGRAM_MESSAGE_LIMIT = 3800;
 const TIMEZONE = process.env.TELEGRAM_TIMEZONE || 'Asia/Tashkent';
+const NAME_PATTERN = /^\p{L}[\p{L}\p{M}\s.'’ʻ-]{1,39}$/u;
 
-const COMMANDS_HELP =
-  'Доступные команды:\n' +
-  '/sklad — просмотр склада\n' +
-  '/add_product — добавить товар на склад\n' +
-  '/new_order — выдать заказ клиенту (списание сразу)\n' +
-  '/history_orders — история выданных заказов\n' +
-  '/cancel — отменить текущее действие';
+// Всё, что нужно обработчикам одного обновления: клиент базы, кто пишет,
+// на каком языке отвечать и как подписывать выдачу.
+interface Ctx {
+  sb: SupabaseClient;
+  userId: number;
+  chatId: number;
+  lang: Lang;
+  staff: string;
+}
+
+const tr = (ctx: Ctx, key: MessageKey, params?: Params) => t(ctx.lang, key, params);
+const say = (ctx: Ctx, key: MessageKey, params?: Params, buttons?: InlineButton[][]) =>
+  sendMessage(ctx.chatId, tr(ctx, key, params), buttons);
 
 // Позиция, которую бот собирает в черновике заказа.
 interface DraftItem {
@@ -52,11 +70,12 @@ interface VariantRef {
 type PendingState =
   | { type: 'confirm_new_client'; query: string }
   | { type: 'pick_client'; candidates: { id: string; name: string; phone: string | null }[]; query: string }
-  | { type: 'pick_variant'; candidates: { variant: ProductVariant }[]; quantity: number };
+  | { type: 'pick_variant'; candidates: { variant: ProductVariant }[]; quantity: number; corrections?: Correction[] };
 
 // Позиция, по которой запрошено больше, чем есть; бот ждёт нового количества.
 interface QtyPrompt extends VariantRef {
   requested: number;
+  corrections?: Correction[];
 }
 
 interface ProductFlowData {
@@ -84,11 +103,16 @@ interface Draft {
   flow_data: FlowData | null;
 }
 
+type OnboardingStep = 'language' | 'name';
+
 interface Session {
   telegram_user_id: number;
   expires_at: string | null;
   failed_attempts: number;
   locked_until: string | null;
+  lang: Lang | null;
+  staff_name: string | null;
+  onboarding: OnboardingStep | null;
 }
 
 function serviceClient(): SupabaseClient {
@@ -115,13 +139,13 @@ function looksLikePhone(input: string): boolean {
 }
 
 function parsePositiveNumber(input: string): number | null {
-  const m = input.trim().match(/^(\d+(?:[.,]\d+)?)\s*(?:шт|штук[аи]?)?\.?$/i);
+  const m = input.trim().match(/^(\d+(?:[.,]\d+)?)\s*(?:шт|штук[аи]?|ta|dona)?\.?$/i);
   if (!m) return null;
   const value = Number(m[1].replace(',', '.'));
   return value > 0 ? value : null;
 }
 
-// Название позиции для сообщений: «Майка — L, Белый».
+// Название позиции для сообщений: «Майка — L, Белый» (уже экранировано).
 function variantTitle(v: { product_name: string; color: string | null; size: string | null; print_type?: string | null }): string {
   const label = variantLabel(v);
   return escapeHtml(v.product_name) + (label ? ' — ' + escapeHtml(label) : '');
@@ -139,6 +163,13 @@ function one<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
 }
 
+// Пометка «исправлено» для позиций, найденных с поправкой опечатки.
+function fixNote(ctx: Ctx, corrections: Correction[] | undefined) {
+  if (!corrections || corrections.length === 0) return '';
+  const pairs = corrections.map((c) => `«${escapeHtml(c.from)}» → «${escapeHtml(c.to)}»`).join(', ');
+  return raw(tr(ctx, 'order.fixed', { pairs: raw(pairs) }));
+}
+
 // Длинные ответы (история) режем на несколько сообщений по границам блоков —
 // у Telegram лимит 4096 символов на сообщение.
 async function sendBlocks(chatId: number, blocks: string[]) {
@@ -153,9 +184,9 @@ async function sendBlocks(chatId: number, blocks: string[]) {
   if (current) await sendMessage(chatId, current);
 }
 
-async function present(chatId: number, messageId: number | undefined, text: string, buttons?: InlineButton[][]) {
-  if (messageId) await editMessageText(chatId, messageId, text, buttons);
-  else await sendMessage(chatId, text, buttons);
+async function present(ctx: Ctx, messageId: number | undefined, text: string, buttons?: InlineButton[][]) {
+  if (messageId) await editMessageText(ctx.chatId, messageId, text, buttons);
+  else await sendMessage(ctx.chatId, text, buttons);
 }
 
 async function getSession(sb: SupabaseClient, telegramUserId: number): Promise<Session | null> {
@@ -163,8 +194,18 @@ async function getSession(sb: SupabaseClient, telegramUserId: number): Promise<S
   return (data as Session) ?? null;
 }
 
-function isSessionActive(session: Session | null): boolean {
+// PIN введён и 24 часа ещё не прошли.
+function isLoggedIn(session: Session | null): boolean {
   return !!session?.expires_at && new Date(session.expires_at) > new Date();
+}
+
+// После PIN нужно выбрать язык и назвать имя. Сессии, созданные до появления
+// этих шагов, тоже проходят их один раз.
+function onboardingStep(session: Session): OnboardingStep | null {
+  if (session.onboarding) return session.onboarding;
+  if (!session.lang) return 'language';
+  if (!session.staff_name) return 'name';
+  return null;
 }
 
 async function getDraft(sb: SupabaseClient, telegramUserId: number): Promise<Draft | null> {
@@ -172,11 +213,11 @@ async function getDraft(sb: SupabaseClient, telegramUserId: number): Promise<Dra
   return (data as Draft) ?? null;
 }
 
-async function updateDraft(sb: SupabaseClient, telegramUserId: number, patch: Record<string, unknown>) {
-  await sb
+async function updateDraft(ctx: Ctx, patch: Record<string, unknown>) {
+  await ctx.sb
     .from('telegram_order_drafts')
     .update({ ...patch, updated_at: now() })
-    .eq('telegram_user_id', telegramUserId);
+    .eq('telegram_user_id', ctx.userId);
 }
 
 async function loadFinishedVariants(sb: SupabaseClient): Promise<ProductVariant[]> {
@@ -189,22 +230,51 @@ async function freshStock(sb: SupabaseClient, variantId: string): Promise<number
   return Number(data?.stock_quantity ?? 0);
 }
 
+// Неуверенно распознанные и нераспознанные слова сохраняются, чтобы по факту
+// использования донастроить словарь и допуски опечаток. Сбой записи журнала
+// никогда не должен ломать сам диалог.
+async function logParseEvents(ctx: Ctx, rawLine: string, events: ParseEvent[]) {
+  if (events.length === 0) return;
+  try {
+    const { error } = await ctx.sb.from('telegram_parse_log').insert(
+      events.map((e) => ({
+        telegram_user_id: ctx.userId,
+        staff_name: ctx.staff,
+        lang: ctx.lang,
+        raw_text: rawLine,
+        reason: e.reason,
+        token: e.token ?? null,
+        detail: e.detail ?? null,
+      }))
+    );
+    if (error) console.error('telegram parse log insert failed', error.message);
+  } catch (err) {
+    console.error('telegram parse log insert threw', err);
+  }
+}
+
 // ---------------------------------------------------------------------------
-// Вход по PIN
+// Вход: PIN → язык → имя (каждые 24 часа, вместе с сессией)
 // ---------------------------------------------------------------------------
 
 async function handlePinAttempt(sb: SupabaseClient, telegramUserId: number, chatId: number, text: string) {
   const session = await getSession(sb, telegramUserId);
 
   if (session?.locked_until && new Date(session.locked_until) > new Date()) {
-    const minutesLeft = Math.ceil((new Date(session.locked_until).getTime() - Date.now()) / 60000);
-    await sendMessage(chatId, `Слишком много неверных попыток. Попробуйте снова через ${minutesLeft} мин.`);
+    const minutes = Math.ceil((new Date(session.locked_until).getTime() - Date.now()) / 60000);
+    await sendMessage(chatId, both('pin.locked', { minutes }));
     return;
   }
 
   const pin = process.env.TELEGRAM_KLADOVSHIK_PIN;
   if (!pin) {
-    await sendMessage(chatId, 'Бот не настроен (не задан PIN). Обратитесь к администратору.');
+    await sendMessage(chatId, both('pin.notSet'));
+    return;
+  }
+
+  // /start и любые команды до входа просто просят PIN и не считаются неверной попыткой.
+  if (text.startsWith('/')) {
+    await sendMessage(chatId, both('pin.prompt'));
     return;
   }
 
@@ -214,8 +284,9 @@ async function handlePinAttempt(sb: SupabaseClient, telegramUserId: number, chat
       expires_at: new Date(Date.now() + SESSION_HOURS * 3600 * 1000).toISOString(),
       failed_attempts: 0,
       locked_until: null,
+      onboarding: 'language',
     });
-    await sendMessage(chatId, `Добро пожаловать! Вход выполнен на 24 часа.\n\n${COMMANDS_HELP}`);
+    await askLanguage(chatId);
     return;
   }
 
@@ -229,10 +300,46 @@ async function handlePinAttempt(sb: SupabaseClient, telegramUserId: number, chat
   });
 
   if (locked) {
-    await sendMessage(chatId, `Неверный PIN. Слишком много попыток — попробуйте снова через ${LOCK_MINUTES} мин.`);
+    await sendMessage(chatId, both('pin.wrongLocked', { minutes: LOCK_MINUTES }));
   } else {
-    await sendMessage(chatId, `Неверный PIN (попытка ${attempts}/${MAX_FAILED_ATTEMPTS}).`);
+    await sendMessage(chatId, both('pin.wrong', { attempts, max: MAX_FAILED_ATTEMPTS }));
   }
+}
+
+async function askLanguage(chatId: number) {
+  await sendMessage(chatId, 'Выберите язык / Tilni tanlang:', [
+    [
+      { text: 'Русский', callback_data: 'lang:ru' },
+      { text: "O'zbek tili", callback_data: 'lang:uz' },
+    ],
+  ]);
+}
+
+async function chooseLanguage(sb: SupabaseClient, session: Session, chatId: number, lang: Lang) {
+  await sb.from('telegram_sessions').update({ lang, onboarding: 'name' }).eq('telegram_user_id', session.telegram_user_id);
+  // Имя с прошлого входа предлагаем одной кнопкой — тот же человек входит каждый день.
+  const buttons: InlineButton[][] | undefined = session.staff_name ? [[{ text: session.staff_name, callback_data: 'name:keep' }]] : undefined;
+  await sendMessage(chatId, t(lang, 'name.ask'), buttons);
+}
+
+async function finishOnboarding(sb: SupabaseClient, session: Session, chatId: number, name: string) {
+  await sb.from('telegram_sessions').update({ staff_name: name, onboarding: null }).eq('telegram_user_id', session.telegram_user_id);
+  const lang = session.lang ?? 'ru';
+  await sendMessage(chatId, t(lang, 'welcome', { name, help: raw(t(lang, 'help')) }));
+}
+
+async function handleOnboardingText(sb: SupabaseClient, session: Session, chatId: number, text: string, step: OnboardingStep) {
+  if (step === 'language') {
+    await askLanguage(chatId);
+    return;
+  }
+  const lang = session.lang ?? 'ru';
+  const name = text.trim().replace(/\s+/g, ' ');
+  if (!NAME_PATTERN.test(name)) {
+    await sendMessage(chatId, t(lang, 'name.invalid'));
+    return;
+  }
+  await finishOnboarding(sb, session, chatId, name);
 }
 
 // ---------------------------------------------------------------------------
@@ -242,7 +349,7 @@ async function handlePinAttempt(sb: SupabaseClient, telegramUserId: number, chat
 
 interface ColorGroup {
   key: string;
-  label: string;
+  label: string | null;
   variants: ProductVariant[];
   total: number;
 }
@@ -257,15 +364,15 @@ function groupByColor(variants: ProductVariant[]): ColorGroup[] {
     .map(([key, vs]) => ({
       key,
       // Одно и то же написание цвета показываем один раз («Белый» и «БЕЛЫЙ» — один цвет).
-      label: vs[0].color ? canonicalValue(vs[0].color, vs.map((v) => v.color), 'color') : 'Без цвета',
+      label: vs[0].color ? canonicalValue(vs[0].color, vs.map((v) => v.color), 'color') : null,
       variants: vs,
       total: vs.reduce((sum, v) => sum + Number(v.stock_quantity), 0),
     }))
-    .sort((a, b) => (a.key === '' ? 1 : b.key === '' ? -1 : a.label.localeCompare(b.label, 'ru')));
+    .sort((a, b) => (a.key === '' ? 1 : b.key === '' ? -1 : (a.label ?? '').localeCompare(b.label ?? '', 'ru')));
 }
 
-async function showSkladRoot(sb: SupabaseClient, chatId: number, messageId?: number) {
-  const variants = await loadFinishedVariants(sb);
+async function showSkladRoot(ctx: Ctx, messageId?: number) {
+  const variants = await loadFinishedVariants(ctx.sb);
   const products = new Map<string, { name: string; total: number }>();
   for (const v of variants) {
     const entry = products.get(v.product_id) ?? { name: v.product_name, total: 0 };
@@ -273,40 +380,36 @@ async function showSkladRoot(sb: SupabaseClient, chatId: number, messageId?: num
     products.set(v.product_id, entry);
   }
   if (products.size === 0) {
-    await present(chatId, messageId, 'На складе готовой продукции пока нет товаров.');
+    await present(ctx, messageId, tr(ctx, 'sklad.empty'));
     return;
   }
+  const pcs = tr(ctx, 'pcs');
   const buttons: InlineButton[][] = Array.from(products.entries())
     .sort((a, b) => a[1].name.localeCompare(b[1].name, 'ru'))
-    .map(([id, p]) => [{ text: `${p.name} — ${fmt(p.total)} шт`, callback_data: `sk:p:${id}` }]);
-  await present(chatId, messageId, '<b>Склад — готовая продукция</b>\nВыберите товар:', buttons);
+    .map(([id, p]) => [{ text: `${p.name} — ${fmt(p.total)} ${pcs}`, callback_data: `sk:p:${id}` }]);
+  await present(ctx, messageId, tr(ctx, 'sklad.title'), buttons);
 }
 
-async function showSkladProduct(sb: SupabaseClient, chatId: number, messageId: number | undefined, productId: string) {
-  const variants = (await loadFinishedVariants(sb)).filter((v) => v.product_id === productId);
+async function showSkladProduct(ctx: Ctx, messageId: number | undefined, productId: string) {
+  const variants = (await loadFinishedVariants(ctx.sb)).filter((v) => v.product_id === productId);
   if (variants.length === 0) {
-    await present(chatId, messageId, 'Этот товар не найден на складе.', [[{ text: '← К товарам', callback_data: 'sk:b' }]]);
+    await present(ctx, messageId, tr(ctx, 'sklad.notFound'), [[{ text: tr(ctx, 'btn.toProducts'), callback_data: 'sk:b' }]]);
     return;
   }
+  const pcs = tr(ctx, 'pcs');
   const groups = groupByColor(variants);
   const buttons: InlineButton[][] = groups.map((g, i) => [
-    { text: `${g.label} — ${fmt(g.total)} шт`, callback_data: `sk:c:${productId}:${i}` },
+    { text: `${g.label ?? tr(ctx, 'sklad.noColor')} — ${fmt(g.total)} ${pcs}`, callback_data: `sk:c:${productId}:${i}` },
   ]);
-  buttons.push([{ text: '← К товарам', callback_data: 'sk:b' }]);
-  await present(chatId, messageId, `<b>${escapeHtml(variants[0].product_name)}</b>\nВыберите цвет:`, buttons);
+  buttons.push([{ text: tr(ctx, 'btn.toProducts'), callback_data: 'sk:b' }]);
+  await present(ctx, messageId, tr(ctx, 'sklad.chooseColor', { product: variants[0].product_name }), buttons);
 }
 
-async function showSkladColor(
-  sb: SupabaseClient,
-  chatId: number,
-  messageId: number | undefined,
-  productId: string,
-  colorIdx: number
-) {
-  const variants = (await loadFinishedVariants(sb)).filter((v) => v.product_id === productId);
+async function showSkladColor(ctx: Ctx, messageId: number | undefined, productId: string, colorIdx: number) {
+  const variants = (await loadFinishedVariants(ctx.sb)).filter((v) => v.product_id === productId);
   const group = groupByColor(variants)[colorIdx];
   if (!group) {
-    await showSkladProduct(sb, chatId, messageId, productId);
+    await showSkladProduct(ctx, messageId, productId);
     return;
   }
   // «Белый XL» и «БЕЛЫЙ XL» в базе — два варианта, но для просмотра это один
@@ -323,40 +426,40 @@ async function showSkladColor(
     .map((row) => {
       const status = stockStatus(row.stock);
       const icon = status === 'out' ? '❌ ' : status === 'low' ? '⚠️ ' : '';
-      const size = row.size ?? 'Без размера';
+      const size = row.size ?? tr(ctx, 'sklad.noSize');
       const print = row.print && row.print !== NO_PRINT ? ` (${row.print})` : '';
-      return `${icon}${escapeHtml(size + print)} — ${fmt(row.stock)} шт`;
+      return icon + tr(ctx, 'sklad.line', { size: size + print, qty: fmt(row.stock) });
     });
-  const text =
-    `<b>${escapeHtml(variants[0].product_name)}, ${escapeHtml(group.label)}</b>\n` +
-    lines.join('\n') +
-    `\n\nВсего: ${fmt(group.total)} шт\n⚠️ — мало, ❌ — нет в наличии`;
-  await present(chatId, messageId, text, [
-    [{ text: '← К цветам', callback_data: `sk:p:${productId}` }],
-    [{ text: '← К товарам', callback_data: 'sk:b' }],
+  const text = tr(ctx, 'sklad.color', {
+    product: variants[0].product_name,
+    color: group.label ?? tr(ctx, 'sklad.noColor'),
+    lines: raw(lines.join('\n')),
+    total: fmt(group.total),
+  });
+  await present(ctx, messageId, text, [
+    [{ text: tr(ctx, 'btn.toColors'), callback_data: `sk:p:${productId}` }],
+    [{ text: tr(ctx, 'btn.toProducts'), callback_data: 'sk:b' }],
   ]);
 }
 
-async function handleSkladCallback(sb: SupabaseClient, chatId: number, messageId: number | undefined, data: string) {
+async function handleSkladCallback(ctx: Ctx, messageId: number | undefined, data: string) {
   const parts = data.split(':');
-  if (parts[1] === 'b') return showSkladRoot(sb, chatId, messageId);
-  if (parts[1] === 'p' && parts[2]) return showSkladProduct(sb, chatId, messageId, parts[2]);
-  if (parts[1] === 'c' && parts[2] && parts[3] !== undefined) {
-    return showSkladColor(sb, chatId, messageId, parts[2], Number(parts[3]));
-  }
-  await sendMessage(chatId, 'Неизвестный выбор.');
+  if (parts[1] === 'b') return showSkladRoot(ctx, messageId);
+  if (parts[1] === 'p' && parts[2]) return showSkladProduct(ctx, messageId, parts[2]);
+  if (parts[1] === 'c' && parts[2] && parts[3] !== undefined) return showSkladColor(ctx, messageId, parts[2], Number(parts[3]));
+  await say(ctx, 'unknownChoice');
 }
 
 // ---------------------------------------------------------------------------
 // /new_order — заказ с немедленной выдачей (как «Уход» в вебе)
 // ---------------------------------------------------------------------------
 
-async function startNewOrder(sb: SupabaseClient, telegramUserId: number, chatId: number) {
-  const previous = await getDraft(sb, telegramUserId);
+async function startNewOrder(ctx: Ctx) {
+  const previous = await getDraft(ctx.sb, ctx.userId);
   const hadWork = !!previous && (previous.items?.length > 0 || previous.flow === 'add_product');
 
-  await sb.from('telegram_order_drafts').upsert({
-    telegram_user_id: telegramUserId,
+  await ctx.sb.from('telegram_order_drafts').upsert({
+    telegram_user_id: ctx.userId,
     step: 'awaiting_client',
     flow: 'order',
     client_id: null,
@@ -367,86 +470,71 @@ async function startNewOrder(sb: SupabaseClient, telegramUserId: number, chatId:
     flow_data: null,
     updated_at: now(),
   });
-  await sendMessage(
-    chatId,
-    (hadWork ? 'Предыдущее незавершённое действие отменено.\n\n' : '') +
-      'Новый заказ — товар выдаётся клиенту сразу, остаток спишется при выдаче.\nВведите имя или телефон клиента.'
-  );
+  await sendMessage(ctx.chatId, (hadWork ? tr(ctx, 'prevCancelled') : '') + tr(ctx, 'order.start'));
 }
 
-function itemsHelpText(): string {
-  return (
-    'Что нужно клиенту? Пишите свободным текстом, например:\n' +
-    '<i>футболка черный xl 50 штук</i>\n' +
-    'Можно несколько позиций — по одной в строке. Когда всё добавлено, нажмите «Выдать заказ» (или /confirm). Отмена — /cancel.'
-  );
+const itemsHelp = (ctx: Ctx) => raw(tr(ctx, 'order.itemsHelp'));
+
+function clientLabel(c: { name: string; phone: string | null }) {
+  return raw(`${escapeHtml(c.name)}${c.phone ? ' — ' + escapeHtml(c.phone) : ''}`);
 }
 
-async function selectClient(
-  sb: SupabaseClient,
-  telegramUserId: number,
-  chatId: number,
-  client: { id: string; name: string; phone: string | null },
-  prefix: string
-) {
-  await updateDraft(sb, telegramUserId, {
+async function selectClient(ctx: Ctx, client: { id: string; name: string; phone: string | null }, created: boolean) {
+  await updateDraft(ctx, {
     client_id: client.id,
     client_name: client.name,
     client_phone: client.phone,
     step: 'adding_items',
     pending: null,
   });
-  await sendMessage(
-    chatId,
-    `${prefix}${escapeHtml(client.name)}${client.phone ? ' — ' + escapeHtml(client.phone) : ''}.\n\n${itemsHelpText()}`
-  );
+  await say(ctx, created ? 'order.clientCreated' : 'order.clientSelected', { client: clientLabel(client), help: itemsHelp(ctx) });
 }
 
-async function handleClientSearch(sb: SupabaseClient, draft: Draft, chatId: number, query: string) {
+async function handleClientSearch(ctx: Ctx, query: string) {
   const q = sanitizeIlike(query);
   if (!q) {
-    await sendMessage(chatId, 'Введите имя или телефон клиента.');
+    await say(ctx, 'order.enterClient');
     return;
   }
 
-  const { data: clients } = await sb.from('clients').select('id, name, phone').or(`name.ilike.%${q}%,phone.ilike.%${q}%`).limit(10);
+  const { data: clients } = await ctx.sb.from('clients').select('id, name, phone').or(`name.ilike.%${q}%,phone.ilike.%${q}%`).limit(10);
 
   if (!clients || clients.length === 0) {
-    await updateDraft(sb, draft.telegram_user_id, { pending: { type: 'confirm_new_client', query: query.trim() } });
-    await sendMessage(chatId, `Клиент «${escapeHtml(query.trim())}» не найден.`, [
-      [{ text: 'Создать нового клиента', callback_data: 'new_client:yes' }],
-      [{ text: 'Отмена', callback_data: 'new_client:no' }],
+    await updateDraft(ctx, { pending: { type: 'confirm_new_client', query: query.trim() } });
+    await say(ctx, 'order.clientNotFound', { query: query.trim() }, [
+      [{ text: tr(ctx, 'order.newClientBtn'), callback_data: 'new_client:yes' }],
+      [{ text: tr(ctx, 'btn.cancel'), callback_data: 'new_client:no' }],
     ]);
     return;
   }
 
-  await updateDraft(sb, draft.telegram_user_id, { pending: { type: 'pick_client', candidates: clients, query: query.trim() } });
+  await updateDraft(ctx, { pending: { type: 'pick_client', candidates: clients, query: query.trim() } });
   const buttons: InlineButton[][] = clients.map((c, i) => [
     { text: `${c.name}${c.phone ? ' — ' + c.phone : ''}`, callback_data: `pick_client:${i}` },
   ]);
-  buttons.push([{ text: 'Создать нового клиента', callback_data: 'new_client:yes' }]);
-  await sendMessage(chatId, 'Найдены клиенты:', buttons);
+  buttons.push([{ text: tr(ctx, 'order.newClientBtn'), callback_data: 'new_client:yes' }]);
+  await say(ctx, 'order.clientsFound', {}, buttons);
 }
 
 // Введённое похоже на телефон — дальше спрашиваем имя, иначе принимаем его за
 // имя и спрашиваем телефон.
-async function beginNewClient(sb: SupabaseClient, telegramUserId: number, chatId: number, query: string) {
+async function beginNewClient(ctx: Ctx, query: string) {
   if (looksLikePhone(query)) {
-    await updateDraft(sb, telegramUserId, { client_phone: query, client_name: null, step: 'awaiting_new_client_name', pending: null });
-    await sendMessage(chatId, 'Введите имя нового клиента.');
+    await updateDraft(ctx, { client_phone: query, client_name: null, step: 'awaiting_new_client_name', pending: null });
+    await say(ctx, 'order.askNewName');
   } else {
-    await updateDraft(sb, telegramUserId, { client_name: query, client_phone: null, step: 'awaiting_new_client_phone', pending: null });
-    await sendMessage(chatId, 'Введите телефон нового клиента (или «-», чтобы пропустить).');
+    await updateDraft(ctx, { client_name: query, client_phone: null, step: 'awaiting_new_client_phone', pending: null });
+    await say(ctx, 'order.askNewPhone');
   }
 }
 
-async function createClientAndContinue(sb: SupabaseClient, draft: Draft, chatId: number, name: string, phone: string | null) {
-  const { data: client, error } = await sb.from('clients').insert({ name: name.trim(), phone }).select().single();
+async function createClientAndContinue(ctx: Ctx, name: string, phone: string | null) {
+  const { data: client, error } = await ctx.sb.from('clients').insert({ name: name.trim(), phone }).select().single();
   if (error || !client) {
-    await sendMessage(chatId, 'Не удалось создать клиента. Попробуйте ещё раз.');
+    await say(ctx, 'order.clientCreateFailed');
     return;
   }
-  await selectClient(sb, draft.telegram_user_id, chatId, client, 'Клиент создан: ');
+  await selectClient(ctx, client, true);
 }
 
 function qtyInDraft(items: DraftItem[] | null, variantId: string): number {
@@ -457,47 +545,47 @@ function qtyInDraft(items: DraftItem[] | null, variantId: string): number {
 // либо спрашивает, сколько забрать. В остаток входит то, что уже набрано в
 // этом же заказе — списание произойдёт только при выдаче.
 async function proposeItem(
-  sb: SupabaseClient,
-  telegramUserId: number,
-  chatId: number,
+  ctx: Ctx,
   variant: VariantRef,
-  requested: number
+  requested: number,
+  corrections?: Correction[]
 ): Promise<'added' | 'wait' | 'rejected'> {
-  const draft = await getDraft(sb, telegramUserId);
+  const draft = await getDraft(ctx.sb, ctx.userId);
   if (!draft || draft.flow !== 'order') return 'rejected';
 
-  const stock = await freshStock(sb, variant.id);
+  const stock = await freshStock(ctx.sb, variant.id);
   const already = qtyInDraft(draft.items, variant.id);
   const available = stock - already;
-  const title = variantTitle(variant);
+  const title = raw(variantTitle(variant));
 
   if (available <= 0) {
-    const note = already > 0 ? ` (весь остаток — ${fmt(stock)} шт — уже в этом заказе)` : '';
-    await sendMessage(chatId, `❌ ${title}: нет в наличии${note}.`);
+    const note = already > 0 ? tr(ctx, 'order.noStockNote', { stock: fmt(stock) }) : '';
+    await say(ctx, 'order.noStock', { title, note: raw(note) });
     return 'rejected';
   }
 
   if (requested > available) {
-    const prompt: QtyPrompt = { ...variant, requested };
-    await updateDraft(sb, telegramUserId, { step: 'awaiting_qty', flow_data: { qty: prompt } });
-    const note = already > 0 ? ` (ещё ${fmt(already)} шт. уже добавлено в заказ)` : '';
-    await sendMessage(
-      chatId,
-      `⚠️ ${title}: запрошено ${fmt(requested)} шт.\nВ наличии только ${fmt(available)} шт${note}. Сколько забрать?`,
+    const prompt: QtyPrompt = { ...variant, requested, corrections };
+    await updateDraft(ctx, { step: 'awaiting_qty', flow_data: { qty: prompt } });
+    const note = already > 0 ? tr(ctx, 'order.qtyNote', { already: fmt(already) }) : '';
+    await say(
+      ctx,
+      'order.qtyPrompt',
+      { title, requested: fmt(requested), available: fmt(available), note: raw(note), fix: fixNote(ctx, corrections) },
       [
-        [{ text: `Забрать ${fmt(available)} шт`, callback_data: 'qty:all' }],
-        [{ text: 'Пропустить позицию', callback_data: 'qty:skip' }],
+        [{ text: tr(ctx, 'order.takeAll', { n: fmt(available) }), callback_data: 'qty:all' }],
+        [{ text: tr(ctx, 'order.skipItem'), callback_data: 'qty:skip' }],
       ]
     );
     return 'wait';
   }
 
-  await addItemToDraft(sb, draft, variant, requested);
-  await sendMessage(chatId, `✅ Добавлено: ${title} — ${fmt(requested)} шт (остаток ${fmt(stock)}).`);
+  await addItemToDraft(ctx, draft, variant, requested);
+  await say(ctx, 'order.added', { title, qty: fmt(requested), stock: fmt(stock), fix: fixNote(ctx, corrections) });
   return 'added';
 }
 
-async function addItemToDraft(sb: SupabaseClient, draft: Draft, variant: VariantRef, quantity: number) {
+async function addItemToDraft(ctx: Ctx, draft: Draft, variant: VariantRef, quantity: number) {
   const items = Array.isArray(draft.items) ? [...draft.items] : [];
   const idx = items.findIndex((it) => it.variantId === variant.id);
   if (idx >= 0) {
@@ -512,114 +600,134 @@ async function addItemToDraft(sb: SupabaseClient, draft: Draft, variant: Variant
       quantity,
     });
   }
-  await updateDraft(sb, draft.telegram_user_id, { items, pending: null, step: 'adding_items', flow_data: null });
+  await updateDraft(ctx, { items, pending: null, step: 'adding_items', flow_data: null });
 }
 
-async function showOrderSummary(sb: SupabaseClient, telegramUserId: number, chatId: number) {
-  const draft = await getDraft(sb, telegramUserId);
+async function showOrderSummary(ctx: Ctx) {
+  const draft = await getDraft(ctx.sb, ctx.userId);
   if (!draft || draft.flow !== 'order') return;
   if (!draft.items || draft.items.length === 0) {
-    await sendMessage(chatId, 'В заказе пока нет позиций.\n\n' + itemsHelpText());
+    await say(ctx, 'order.summaryEmpty', { help: itemsHelp(ctx) });
     return;
   }
-  const lines = draft.items.map((it) => `• ${itemTitle(it)} — ${fmt(it.quantity)} шт`);
-  const text = [
-    `<b>Клиент:</b> ${escapeHtml(draft.client_name ?? '')}${draft.client_phone ? ' (' + escapeHtml(draft.client_phone) + ')' : ''}`,
-    '<b>Заказ (будет выдан сразу):</b>',
-    ...lines,
-    '',
-    'Добавьте ещё позицию текстом или нажмите «Выдать заказ».',
-  ].join('\n');
-  await sendMessage(chatId, text, [
-    [{ text: '✅ Выдать заказ', callback_data: 'issue:yes' }],
-    [{ text: 'Отмена', callback_data: 'issue:cancel' }],
-  ]);
+  const pcs = tr(ctx, 'pcs');
+  const lines = draft.items.map((it) => `• ${itemTitle(it)} — ${fmt(it.quantity)} ${pcs}`);
+  await say(
+    ctx,
+    'order.summary',
+    { client: clientLabel({ name: draft.client_name ?? '', phone: draft.client_phone }), lines: raw(lines.join('\n')) },
+    [
+      [{ text: tr(ctx, 'order.issueBtn'), callback_data: 'issue:yes' }],
+      [{ text: tr(ctx, 'btn.cancel'), callback_data: 'issue:cancel' }],
+    ]
+  );
 }
 
-async function handleAddItems(sb: SupabaseClient, telegramUserId: number, chatId: number, text: string) {
+// Текст ошибки разбора на языке пользователя.
+function parseErrorText(ctx: Ctx, result: Extract<ParseResult, { kind: 'error' }>): string {
+  const p = result.params;
+  const list = (items: string[] | undefined) => (items && items.length > 0 ? items.join(', ') : '—');
+  const params: Params = {
+    line: p.line,
+    tokens: (p.tokens ?? []).join(' '),
+    products: list(p.products),
+    product: p.productLabel ?? '',
+    colors: list(p.colors),
+    sizes: list(p.sizes),
+  };
+  const key: Record<typeof result.code, MessageKey> = {
+    no_tokens: 'parse.noTokens',
+    bad_quantity: 'parse.badQty',
+    no_product: 'parse.noProduct',
+    unrecognized: 'parse.unrecognized',
+    no_variant: 'parse.noVariant',
+  };
+  return tr(ctx, key[result.code], params);
+}
+
+async function handleAddItems(ctx: Ctx, text: string) {
   const lines = text
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean);
-  const variants = await loadFinishedVariants(sb);
+  const variants = await loadFinishedVariants(ctx.sb);
 
   let addedAny = false;
   for (let i = 0; i < lines.length; i++) {
     const result = parseOrderLine(lines[i], variants);
+    await logParseEvents(ctx, lines[i], result.events);
     let waiting = false;
 
     if (result.kind === 'error') {
-      await sendMessage(chatId, escapeHtml(result.message));
+      await sendMessage(ctx.chatId, parseErrorText(ctx, result));
     } else if (result.kind === 'exact') {
-      const outcome = await proposeItem(sb, telegramUserId, chatId, refOf(result.variant), result.quantity);
+      const outcome = await proposeItem(ctx, refOf(result.variant), result.quantity, result.corrections);
       if (outcome === 'added') addedAny = true;
       waiting = outcome === 'wait';
     } else {
-      await updateDraft(sb, telegramUserId, {
-        pending: { type: 'pick_variant', candidates: result.candidates.map((variant) => ({ variant })), quantity: result.quantity },
+      await updateDraft(ctx, {
+        pending: {
+          type: 'pick_variant',
+          candidates: result.candidates.map((variant) => ({ variant })),
+          quantity: result.quantity,
+          corrections: result.corrections,
+        },
       });
       const buttons: InlineButton[][] = result.candidates.map((v, idx) => [
-        {
-          text: `${v.product_name} — ${variantLabel(v) ?? 'без параметров'} (остаток ${fmt(v.stock_quantity)})`,
-          callback_data: `pick_variant:${idx}`,
-        },
+        { text: `${v.product_name} — ${variantLabel(v) ?? '—'} (${fmt(v.stock_quantity)} ${tr(ctx, 'pcs')})`, callback_data: `pick_variant:${idx}` },
       ]);
-      await sendMessage(chatId, `Уточните вариант для «${escapeHtml(lines[i])}»:${result.note ? '\n' + escapeHtml(result.note) : ''}`, buttons);
+      const note = result.truncated ? raw(tr(ctx, 'order.truncated', result.truncated)) : '';
+      await say(ctx, 'order.pickVariant', { line: lines[i], note }, buttons);
       waiting = true;
     }
 
     if (waiting) {
       const remaining = lines.length - i - 1;
-      if (remaining > 0) {
-        await sendMessage(chatId, `Остальные строки (${remaining}) не обработаны — отправьте их заново после уточнения выше.`);
-      }
+      if (remaining > 0) await say(ctx, 'order.restLines', { n: remaining });
       return;
     }
   }
 
-  if (addedAny) await showOrderSummary(sb, telegramUserId, chatId);
+  if (addedAny) await showOrderSummary(ctx);
 }
 
 // Ответ на «Сколько забрать?»: число или кнопка.
-async function resolveQty(sb: SupabaseClient, draft: Draft, chatId: number, choice: number | 'all' | 'skip') {
+async function resolveQty(ctx: Ctx, draft: Draft, choice: number | 'all' | 'skip') {
   const prompt = draft.flow_data?.qty;
   if (!prompt) {
-    await sendMessage(chatId, 'Нет позиции, ожидающей количества.');
+    await say(ctx, 'order.noQtyPending');
     return;
   }
 
   if (choice === 'skip') {
-    await updateDraft(sb, draft.telegram_user_id, { step: 'adding_items', flow_data: null });
-    await sendMessage(chatId, 'Позиция пропущена.');
-    await showOrderSummary(sb, draft.telegram_user_id, chatId);
+    await updateDraft(ctx, { step: 'adding_items', flow_data: null });
+    await say(ctx, 'order.skipped');
+    await showOrderSummary(ctx);
     return;
   }
 
-  const stock = await freshStock(sb, prompt.id);
+  const stock = await freshStock(ctx.sb, prompt.id);
   const available = stock - qtyInDraft(draft.items, prompt.id);
   const quantity = choice === 'all' ? available : choice;
+  const title = raw(variantTitle(prompt));
 
   if (quantity <= 0) {
-    await updateDraft(sb, draft.telegram_user_id, { step: 'adding_items', flow_data: null });
-    await sendMessage(chatId, `❌ ${variantTitle(prompt)}: остатка не осталось, позиция пропущена.`);
-    await showOrderSummary(sb, draft.telegram_user_id, chatId);
+    await updateDraft(ctx, { step: 'adding_items', flow_data: null });
+    await say(ctx, 'order.noStockLeft', { title });
+    await showOrderSummary(ctx);
     return;
   }
   if (quantity > available) {
-    await sendMessage(
-      chatId,
-      `В наличии только ${fmt(available)} шт. Введите количество не больше ${fmt(available)} или нажмите «Пропустить».`,
-      [
-        [{ text: `Забрать ${fmt(available)} шт`, callback_data: 'qty:all' }],
-        [{ text: 'Пропустить позицию', callback_data: 'qty:skip' }],
-      ]
-    );
+    await say(ctx, 'order.qtyTooMany', { available: fmt(available) }, [
+      [{ text: tr(ctx, 'order.takeAll', { n: fmt(available) }), callback_data: 'qty:all' }],
+      [{ text: tr(ctx, 'order.skipItem'), callback_data: 'qty:skip' }],
+    ]);
     return;
   }
 
-  await addItemToDraft(sb, draft, prompt, quantity);
-  await sendMessage(chatId, `✅ Добавлено: ${variantTitle(prompt)} — ${fmt(quantity)} шт (остаток ${fmt(stock)}).`);
-  await showOrderSummary(sb, draft.telegram_user_id, chatId);
+  await addItemToDraft(ctx, draft, prompt, quantity);
+  await say(ctx, 'order.added', { title, qty: fmt(quantity), stock: fmt(stock), fix: fixNote(ctx, prompt.corrections) });
+  await showOrderSummary(ctx);
 }
 
 async function restoreDraft(sb: SupabaseClient, draft: Draft) {
@@ -640,14 +748,16 @@ async function restoreDraft(sb: SupabaseClient, draft: Draft) {
 // Оформляет заказ так же, как «Уход» в вебе: создаёт заказ «Новый», кладёт
 // позиции и только потом меняет статус на «Выдан» — списание остатка и
 // метку issued_at делает существующий триггер базы, здесь их не дублируем.
-async function issueOrder(sb: SupabaseClient, telegramUserId: number, chatId: number) {
-  const current = await getDraft(sb, telegramUserId);
+// Вместе со статусом записывается имя кладовщика (issued_by_name).
+async function issueOrder(ctx: Ctx) {
+  const { sb } = ctx;
+  const current = await getDraft(sb, ctx.userId);
   if (!current || current.flow !== 'order' || !current.client_id || !current.items || current.items.length === 0) {
-    await sendMessage(chatId, 'Нечего выдавать — заказ пуст. Начните с /new_order.');
+    await say(ctx, 'order.empty');
     return;
   }
   if (current.step === 'awaiting_qty' || current.pending) {
-    await sendMessage(chatId, 'Сначала завершите выбор выше: укажите количество или выберите вариант (или /cancel).');
+    await say(ctx, 'order.finishChoice');
     return;
   }
 
@@ -655,13 +765,13 @@ async function issueOrder(sb: SupabaseClient, telegramUserId: number, chatId: nu
   const { data: claimed } = await sb
     .from('telegram_order_drafts')
     .delete()
-    .eq('telegram_user_id', telegramUserId)
+    .eq('telegram_user_id', ctx.userId)
     .eq('flow', 'order')
     .select()
     .maybeSingle();
   const draft = claimed as Draft | null;
   if (!draft) {
-    await sendMessage(chatId, 'Этот заказ уже оформлен или отменён.');
+    await say(ctx, 'order.alreadyDone');
     return;
   }
 
@@ -678,17 +788,18 @@ async function issueOrder(sb: SupabaseClient, telegramUserId: number, chatId: nu
       reconciled.push(it);
       continue;
     }
+    const title = raw(itemTitle(it));
     adjustments.push(
       available > 0
-        ? `• ${itemTitle(it)}: было ${fmt(it.quantity)}, осталось ${fmt(available)} — количество уменьшено`
-        : `• ${itemTitle(it)}: остатка нет — позиция убрана`
+        ? tr(ctx, 'order.adjReduced', { title, was: fmt(it.quantity), left: fmt(available) })
+        : tr(ctx, 'order.adjRemoved', { title })
     );
     if (available > 0) reconciled.push({ ...it, quantity: available });
   }
   if (adjustments.length > 0) {
     await restoreDraft(sb, { ...draft, items: reconciled });
-    await sendMessage(chatId, `Остаток изменился, пока вы оформляли заказ:\n${adjustments.join('\n')}\n\nЗаказ ещё НЕ выдан — проверьте и подтвердите заново.`);
-    await showOrderSummary(sb, telegramUserId, chatId);
+    await say(ctx, 'order.stockChanged', { adjustments: raw(adjustments.join('\n')) });
+    await showOrderSummary(ctx);
     return;
   }
 
@@ -699,8 +810,8 @@ async function issueOrder(sb: SupabaseClient, telegramUserId: number, chatId: nu
     .single();
   if (orderError || !order) {
     await restoreDraft(sb, draft);
-    await sendMessage(chatId, 'Не удалось создать заказ. Заказ сохранён — попробуйте нажать «Выдать заказ» ещё раз.');
-    await showOrderSummary(sb, telegramUserId, chatId);
+    await say(ctx, 'order.createFailed');
+    await showOrderSummary(ctx);
     return;
   }
 
@@ -718,58 +829,47 @@ async function issueOrder(sb: SupabaseClient, telegramUserId: number, chatId: nu
   if (itemsError) {
     await sb.from('orders').delete().eq('id', order.id);
     await restoreDraft(sb, draft);
-    await sendMessage(chatId, 'Не удалось сохранить позиции. Заказ не создан и не выдан — попробуйте «Выдать заказ» ещё раз.');
-    await showOrderSummary(sb, telegramUserId, chatId);
+    await say(ctx, 'order.itemsFailed');
+    await showOrderSummary(ctx);
     return;
   }
 
   // Смена статуса на «Выдан» запускает триггер списания.
-  const { error: issueError } = await sb.from('orders').update({ status: 'issued' }).eq('id', order.id);
+  const { error: issueError } = await sb.from('orders').update({ status: 'issued', issued_by_name: ctx.staff }).eq('id', order.id);
   if (issueError) {
     await sb.from('orders').delete().eq('id', order.id);
     await restoreDraft(sb, draft);
-    const shortage = issueError.message?.includes('insufficient_stock');
-    await sendMessage(
-      chatId,
-      shortage
-        ? 'Остаток изменился в последний момент — заказ НЕ выдан. Проверьте позиции и нажмите «Выдать заказ» ещё раз.'
-        : 'Не удалось выдать заказ. Ничего не списано — попробуйте ещё раз.'
-    );
-    await showOrderSummary(sb, telegramUserId, chatId);
+    await say(ctx, issueError.message?.includes('insufficient_stock') ? 'order.raceFailed' : 'order.issueFailed');
+    await showOrderSummary(ctx);
     return;
   }
 
   const { data: after } = await sb.from('product_variants').select('id, stock_quantity').in('id', variantIds);
   const remainingById = new Map((after ?? []).map((r: { id: string; stock_quantity: number }) => [r.id, Number(r.stock_quantity)]));
-  const lines = draft.items.map(
-    (it) => `• ${itemTitle(it)} — ${fmt(it.quantity)} шт (остаток теперь ${fmt(remainingById.get(it.variantId) ?? 0)})`
+  const lines = draft.items.map((it) =>
+    tr(ctx, 'order.issuedLine', { title: raw(itemTitle(it)), qty: fmt(it.quantity), left: fmt(remainingById.get(it.variantId) ?? 0) })
   );
-  await sendMessage(
-    chatId,
-    [
-      '<b>Заказ выдан ✅</b>',
-      `Клиент: ${escapeHtml(draft.client_name ?? '')}`,
-      'Статус: Выдан, остаток списан.',
-      ...lines,
-      '',
-      `${APP_URL}/orders/${order.id}`,
-    ].join('\n')
-  );
+  await say(ctx, 'order.issued', {
+    client: draft.client_name ?? '',
+    staff: ctx.staff,
+    lines: raw(lines.join('\n')),
+    url: `${APP_URL}/orders/${order.id}`,
+  });
 }
 
 // ---------------------------------------------------------------------------
 // /add_product — добавление товара на склад: название → цвет → размер → количество
 // ---------------------------------------------------------------------------
 
-async function startAddProduct(sb: SupabaseClient, telegramUserId: number, chatId: number) {
-  const previous = await getDraft(sb, telegramUserId);
+async function startAddProduct(ctx: Ctx) {
+  const previous = await getDraft(ctx.sb, ctx.userId);
   const hadWork = !!previous && (previous.items?.length > 0 || previous.flow === 'add_product');
 
-  const { data: products } = await sb.from('products').select('name').eq('warehouse_type', 'finished_goods').order('name');
+  const { data: products } = await ctx.sb.from('products').select('name').eq('warehouse_type', 'finished_goods').order('name');
   const names = (products ?? []).map((p: { name: string }) => p.name);
 
-  await sb.from('telegram_order_drafts').upsert({
-    telegram_user_id: telegramUserId,
+  await ctx.sb.from('telegram_order_drafts').upsert({
+    telegram_user_id: ctx.userId,
     step: 'ap_name',
     flow: 'add_product',
     client_id: null,
@@ -782,12 +882,7 @@ async function startAddProduct(sb: SupabaseClient, telegramUserId: number, chatI
   });
 
   const buttons: InlineButton[][] = names.map((name, i) => [{ text: name, callback_data: `ap:n:${i}` }]);
-  await sendMessage(
-    chatId,
-    (hadWork ? 'Предыдущее незавершённое действие отменено.\n\n' : '') +
-      '<b>Добавление товара на склад</b> (без печати)\nШаг 1/4. Выберите товар из списка или введите название нового.',
-    buttons.length > 0 ? buttons : undefined
-  );
+  await sendMessage(ctx.chatId, (hadWork ? tr(ctx, 'prevCancelled') : '') + tr(ctx, 'ap.start'), buttons.length > 0 ? buttons : undefined);
 }
 
 async function loadProductVariants(sb: SupabaseClient, productName: string): Promise<{ id: string | null; variants: ProductVariant[] }> {
@@ -795,51 +890,47 @@ async function loadProductVariants(sb: SupabaseClient, productName: string): Pro
   const product = (products ?? []).find((p: { name: string }) => norm(p.name) === norm(productName));
   const all = await loadFinishedVariants(sb);
   if (!product) return { id: null, variants: all };
-  const own = all.filter((v) => v.product_id === product.id);
-  return { id: product.id, variants: own };
+  return { id: product.id, variants: all.filter((v) => v.product_id === product.id) };
 }
 
-async function askColor(sb: SupabaseClient, telegramUserId: number, chatId: number, name: string) {
-  const { id, variants } = await loadProductVariants(sb, name);
+async function askColor(ctx: Ctx, name: string) {
+  const { id, variants } = await loadProductVariants(ctx.sb, name);
   const colors = Array.from(new Set(variants.map((v) => v.color).filter(Boolean) as string[]));
   const canonical = Array.from(new Map(colors.map((c) => [norm(c), canonicalValue(c, colors, 'color')])).values()).sort((a, b) =>
     a.localeCompare(b, 'ru')
   );
-  await updateDraft(sb, telegramUserId, { step: 'ap_color', flow_data: { ap: { name, options: canonical } } });
+  await updateDraft(ctx, { step: 'ap_color', flow_data: { ap: { name, options: canonical } } });
 
   const buttons: InlineButton[][] = canonical.map((c, i) => [{ text: c, callback_data: `ap:c:${i}` }]);
-  buttons.push([{ text: 'Без цвета', callback_data: 'ap:c:none' }]);
-  await sendMessage(
-    chatId,
-    `Товар: <b>${escapeHtml(name)}</b>${id ? '' : ' (новый)'}\nШаг 2/4. Выберите цвет или введите новый.`,
-    buttons
-  );
+  buttons.push([{ text: tr(ctx, 'ap.noColorBtn'), callback_data: 'ap:c:none' }]);
+  await say(ctx, 'ap.color', { name, isNew: id ? '' : raw(tr(ctx, 'ap.new')) }, buttons);
 }
 
-async function askSize(sb: SupabaseClient, draft: Draft, chatId: number, color: string | null) {
+async function askSize(ctx: Ctx, draft: Draft, color: string | null) {
   const ap = draft.flow_data?.ap ?? {};
-  const { variants } = await loadProductVariants(sb, ap.name ?? '');
+  const { variants } = await loadProductVariants(ctx.sb, ap.name ?? '');
   const sizes = sortSizes(Array.from(new Set(variants.map((v) => v.size).filter(Boolean) as string[])));
-  await updateDraft(sb, draft.telegram_user_id, { step: 'ap_size', flow_data: { ap: { ...ap, color, options: sizes } } });
+  await updateDraft(ctx, { step: 'ap_size', flow_data: { ap: { ...ap, color, options: sizes } } });
 
   const buttons: InlineButton[][] = [];
   for (let i = 0; i < sizes.length; i += 3) {
     buttons.push(sizes.slice(i, i + 3).map((s, j) => ({ text: s, callback_data: `ap:s:${i + j}` })));
   }
-  buttons.push([{ text: 'Без размера', callback_data: 'ap:s:none' }]);
-  await sendMessage(chatId, `Цвет: <b>${escapeHtml(color ?? 'без цвета')}</b>\nШаг 3/4. Выберите размер или введите новый.`, buttons);
+  buttons.push([{ text: tr(ctx, 'ap.noSizeBtn'), callback_data: 'ap:s:none' }]);
+  await say(ctx, 'ap.size', { color: color ?? tr(ctx, 'ap.noColorLabel') }, buttons);
 }
 
-async function askQuantity(sb: SupabaseClient, draft: Draft, chatId: number, size: string | null) {
+async function askQuantity(ctx: Ctx, draft: Draft, size: string | null) {
   const ap = draft.flow_data?.ap ?? {};
-  await updateDraft(sb, draft.telegram_user_id, { step: 'ap_qty', flow_data: { ap: { ...ap, size, options: [] } } });
-  await sendMessage(chatId, `Размер: <b>${escapeHtml(size ?? 'без размера')}</b>\nШаг 4/4. Введите количество (шт).`);
+  await updateDraft(ctx, { step: 'ap_qty', flow_data: { ap: { ...ap, size, options: [] } } });
+  await say(ctx, 'ap.qty', { size: size ?? tr(ctx, 'ap.noSizeLabel') });
 }
 
-async function finalizeProduct(sb: SupabaseClient, draft: Draft, chatId: number, quantity: number) {
+async function finalizeProduct(ctx: Ctx, draft: Draft, quantity: number) {
+  const { sb } = ctx;
   const ap = draft.flow_data?.ap;
   if (!ap?.name) {
-    await sendMessage(chatId, 'Не хватает данных. Начните заново: /add_product.');
+    await say(ctx, 'ap.missingData');
     return;
   }
   const color = ap.color ?? null;
@@ -862,14 +953,14 @@ async function finalizeProduct(sb: SupabaseClient, draft: Draft, chatId: number,
       productId = (again ?? []).find((p: { name: string }) => norm(p.name) === norm(ap.name!))?.id ?? null;
       if (!productId) {
         console.error('telegram add_product: create product failed', error);
-        await sendMessage(chatId, 'Не удалось создать товар. Введите количество ещё раз или /cancel.');
+        await say(ctx, 'ap.createProductFailed');
         return;
       }
     }
   }
 
   const label = variantLabel({ color, size, print_type: NO_PRINT });
-  const title = `${escapeHtml(ap.name)}${label ? ' — ' + escapeHtml(label) : ''}`;
+  const title = raw(`${escapeHtml(ap.name)}${label ? ' — ' + escapeHtml(label) : ''}`);
 
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data: existingRows } = await sb
@@ -892,11 +983,8 @@ async function finalizeProduct(sb: SupabaseClient, draft: Draft, chatId: number,
         .select('id');
       if (!updated || updated.length === 0) continue;
 
-      await sb.from('telegram_order_drafts').delete().eq('telegram_user_id', draft.telegram_user_id);
-      await sendMessage(
-        chatId,
-        `Товар успешно добавлен на склад ✅\n${title}\nТакой вариант уже был, остаток стал ${fmt(before + quantity)} (было ${fmt(before)}, +${fmt(quantity)}).`
-      );
+      await sb.from('telegram_order_drafts').delete().eq('telegram_user_id', ctx.userId);
+      await say(ctx, 'ap.doneExisting', { title, after: fmt(before + quantity), before: fmt(before), added: fmt(quantity) });
       return;
     }
 
@@ -912,87 +1000,94 @@ async function finalizeProduct(sb: SupabaseClient, draft: Draft, chatId: number,
       // Вариант могли создать между проверкой и вставкой — пробуем ещё раз как «уже был».
       if (attempt < 2) continue;
       console.error('telegram add_product: insert variant failed', error);
-      await sendMessage(chatId, 'Не удалось сохранить товар. Введите количество ещё раз или /cancel.');
+      await say(ctx, 'ap.saveFailed');
       return;
     }
 
-    await sb.from('telegram_order_drafts').delete().eq('telegram_user_id', draft.telegram_user_id);
-    await sendMessage(chatId, `Товар успешно добавлен на склад ✅\n${title}: ${fmt(quantity)} шт.`);
+    await sb.from('telegram_order_drafts').delete().eq('telegram_user_id', ctx.userId);
+    await say(ctx, 'ap.doneNew', { title, qty: fmt(quantity) });
     return;
   }
 
-  await sendMessage(chatId, 'Остаток менялся во время сохранения. Введите количество ещё раз или /cancel.');
+  await say(ctx, 'ap.raced');
 }
 
-async function handleAddProductText(sb: SupabaseClient, draft: Draft, chatId: number, text: string) {
+async function handleAddProductText(ctx: Ctx, draft: Draft, text: string) {
   const ap = draft.flow_data?.ap ?? {};
 
   if (draft.step === 'ap_name') {
-    const { data: products } = await sb.from('products').select('name');
+    const { data: products } = await ctx.sb.from('products').select('name');
     const names = (products ?? []).map((p: { name: string }) => p.name);
     const typed = text.trim().replace(/\s+/g, ' ');
-    const existing = names.find((n: string) => norm(n) === norm(typed));
-    await askColor(sb, draft.telegram_user_id, chatId, existing ?? typed.charAt(0).toUpperCase() + typed.slice(1));
+    const existing = names.find((n: string) => sameProductName(typed, n));
+    await askColor(ctx, existing ?? typed.charAt(0).toUpperCase() + typed.slice(1));
   } else if (draft.step === 'ap_color') {
-    const { variants } = await loadProductVariants(sb, ap.name ?? '');
-    const all = await loadFinishedVariants(sb);
+    const { variants } = await loadProductVariants(ctx.sb, ap.name ?? '');
+    const all = await loadFinishedVariants(ctx.sb);
     const color = canonicalValue(text, [...variants, ...all].map((v) => v.color), 'color');
-    await askSize(sb, draft, chatId, color);
+    await askSize(ctx, draft, color);
   } else if (draft.step === 'ap_size') {
-    const all = await loadFinishedVariants(sb);
+    const all = await loadFinishedVariants(ctx.sb);
     const size = canonicalValue(text, all.map((v) => v.size), 'size');
-    await askQuantity(sb, draft, chatId, size);
+    await askQuantity(ctx, draft, size);
   } else if (draft.step === 'ap_qty') {
     const quantity = parsePositiveNumber(text);
     if (!quantity) {
-      await sendMessage(chatId, 'Введите количество числом больше нуля, например: 20');
+      await say(ctx, 'ap.qtyInvalid');
       return;
     }
-    await finalizeProduct(sb, draft, chatId, quantity);
+    await finalizeProduct(ctx, draft, quantity);
   } else {
-    await sendMessage(chatId, 'Наберите /add_product, чтобы начать.');
+    await say(ctx, 'ap.startOver');
   }
 }
 
-async function handleAddProductCallback(sb: SupabaseClient, telegramUserId: number, chatId: number, data: string) {
-  const draft = await getDraft(sb, telegramUserId);
+async function handleAddProductCallback(ctx: Ctx, data: string) {
+  const draft = await getDraft(ctx.sb, ctx.userId);
   if (!draft || draft.flow !== 'add_product') {
-    await sendMessage(chatId, 'Это действие уже неактуально. Начните заново: /add_product.');
+    await say(ctx, 'ap.stale');
     return;
   }
-  const [, kind, raw] = data.split(':');
+  const [, kind, rawIdx] = data.split(':');
   const ap = draft.flow_data?.ap ?? {};
-  const picked = raw === 'none' ? null : (ap.options ?? [])[Number(raw)];
-  if (raw !== 'none' && picked === undefined) {
-    await sendMessage(chatId, 'Не удалось выбрать. Начните заново: /add_product.');
+  const picked = rawIdx === 'none' ? null : (ap.options ?? [])[Number(rawIdx)];
+  if (rawIdx !== 'none' && picked === undefined) {
+    await say(ctx, 'ap.pickFailed');
     return;
   }
 
-  if (kind === 'n' && draft.step === 'ap_name' && picked) await askColor(sb, telegramUserId, chatId, picked);
-  else if (kind === 'c' && draft.step === 'ap_color') await askSize(sb, draft, chatId, picked);
-  else if (kind === 's' && draft.step === 'ap_size') await askQuantity(sb, draft, chatId, picked);
-  else await sendMessage(chatId, 'Это действие уже неактуально. Продолжите текущий шаг или /cancel.');
+  if (kind === 'n' && draft.step === 'ap_name' && picked) await askColor(ctx, picked);
+  else if (kind === 'c' && draft.step === 'ap_color') await askSize(ctx, draft, picked);
+  else if (kind === 's' && draft.step === 'ap_size') await askQuantity(ctx, draft, picked);
+  else await say(ctx, 'ap.staleStep');
 }
 
 // ---------------------------------------------------------------------------
 // /history_orders — последние выданные заказы
 // ---------------------------------------------------------------------------
 
-async function showHistory(sb: SupabaseClient, chatId: number) {
-  const { data: orders, error } = await sb
+interface VariantRefRow {
+  color: string | null;
+  size: string | null;
+  print_type: string | null;
+  products: { name: string } | { name: string }[] | null;
+}
+
+async function showHistory(ctx: Ctx) {
+  const { data: orders, error } = await ctx.sb
     .from('orders')
-    .select('id, issued_at, clients(name), order_items(quantity, product_variants(color, size, print_type, products(name)))')
+    .select('id, issued_at, issued_by_name, clients(name), order_items(quantity, product_variants(color, size, print_type, products(name)))')
     .eq('status', 'issued')
     .order('issued_at', { ascending: false, nullsFirst: false })
     .limit(HISTORY_LIMIT);
 
   if (error) {
     console.error('telegram history failed', error);
-    await sendMessage(chatId, 'Не удалось загрузить историю. Попробуйте ещё раз.');
+    await say(ctx, 'history.error');
     return;
   }
   if (!orders || orders.length === 0) {
-    await sendMessage(chatId, 'Выданных заказов пока нет.');
+    await say(ctx, 'history.empty');
     return;
   }
 
@@ -1011,28 +1106,22 @@ async function showHistory(sb: SupabaseClient, chatId: number) {
       const v = one(it.product_variants as VariantRefRow | VariantRefRow[] | null);
       const product = one(v?.products ?? null);
       const title = variantTitle({
-        product_name: product?.name ?? 'Товар',
+        product_name: product?.name ?? tr(ctx, 'history.product'),
         color: v?.color ?? null,
         size: v?.size ?? null,
         print_type: v?.print_type ?? null,
       });
       return `  • ${title} × ${fmt(it.quantity)}`;
     });
-    if (items.length > shown.length) shown.push(`  …и ещё ${items.length - shown.length} поз.`);
-    if (shown.length === 0) shown.push('  (позиции не выданы)');
+    if (items.length > shown.length) shown.push(tr(ctx, 'history.more', { n: items.length - shown.length }));
+    if (shown.length === 0) shown.push(tr(ctx, 'history.noItems'));
 
     const when = o.issued_at ? dateFormat.format(new Date(o.issued_at)) : '—';
-    return `<b>${when}</b> — ${escapeHtml(client?.name ?? 'Клиент')}\n${shown.join('\n')}`;
+    const by = o.issued_by_name ? tr(ctx, 'history.by', { name: o.issued_by_name }) : '';
+    return `<b>${when}</b> — ${escapeHtml(client?.name ?? tr(ctx, 'history.client'))}${by}\n${shown.join('\n')}`;
   });
 
-  await sendBlocks(chatId, [`<b>Последние выданные заказы</b> (${orders.length})`, ...blocks]);
-}
-
-interface VariantRefRow {
-  color: string | null;
-  size: string | null;
-  print_type: string | null;
-  products: { name: string } | { name: string }[] | null;
+  await sendBlocks(ctx.chatId, [tr(ctx, 'history.title', { n: orders.length }), ...blocks]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1040,90 +1129,109 @@ interface VariantRefRow {
 // ---------------------------------------------------------------------------
 
 async function handleCallbackQuery(sb: SupabaseClient, cq: TelegramCallbackQuery) {
-  const telegramUserId = cq.from.id;
+  const userId = cq.from.id;
   const chatId = cq.message?.chat.id;
   if (!chatId) return;
 
   await answerCallbackQuery(cq.id);
 
-  const session = await getSession(sb, telegramUserId);
-  if (!isSessionActive(session)) {
-    await sendMessage(chatId, 'Сессия истекла. Введите PIN заново.');
+  const session = await getSession(sb, userId);
+  if (!session || !isLoggedIn(session)) {
+    await sendMessage(chatId, both('sessionExpired'));
     return;
   }
 
   const data = cq.data ?? '';
 
+  // Вход: выбор языка и «то же имя, что вчера».
+  const step = onboardingStep(session);
+  if (step) {
+    if (step === 'language' && (data === 'lang:ru' || data === 'lang:uz')) {
+      await chooseLanguage(sb, session, chatId, data === 'lang:ru' ? 'ru' : 'uz');
+    } else if (step === 'name' && data === 'name:keep' && session.staff_name) {
+      await finishOnboarding(sb, session, chatId, session.staff_name);
+    } else if (step === 'language') {
+      await askLanguage(chatId);
+    } else {
+      await sendMessage(chatId, t(session.lang ?? 'ru', 'name.ask'));
+    }
+    return;
+  }
+  if (data.startsWith('lang:') || data.startsWith('name:')) return; // устаревшая кнопка входа
+
+  const ctx: Ctx = { sb, userId, chatId, lang: session.lang!, staff: session.staff_name! };
+  const messageId = cq.message?.message_id;
+
   // Эти кнопки не требуют черновика заказа.
   if (data.startsWith('sk:')) {
-    await handleSkladCallback(sb, chatId, cq.message?.message_id, data);
+    await handleSkladCallback(ctx, messageId, data);
     return;
   }
   if (data.startsWith('ap:')) {
-    await handleAddProductCallback(sb, telegramUserId, chatId, data);
+    await handleAddProductCallback(ctx, data);
     return;
   }
   if (data === 'issue:yes') {
-    await issueOrder(sb, telegramUserId, chatId);
+    await issueOrder(ctx);
     return;
   }
   if (data === 'issue:cancel') {
-    await sb.from('telegram_order_drafts').delete().eq('telegram_user_id', telegramUserId).eq('flow', 'order');
-    await sendMessage(chatId, 'Заказ отменён, ничего не списано.');
+    await sb.from('telegram_order_drafts').delete().eq('telegram_user_id', userId).eq('flow', 'order');
+    await say(ctx, 'order.cancelled');
     return;
   }
 
-  const draft = await getDraft(sb, telegramUserId);
+  const draft = await getDraft(sb, userId);
 
   if (data.startsWith('qty:')) {
     if (!draft || draft.flow !== 'order' || draft.step !== 'awaiting_qty') {
-      await sendMessage(chatId, 'Это действие уже неактуально.');
+      await say(ctx, 'staleAction');
       return;
     }
-    await resolveQty(sb, draft, chatId, data === 'qty:all' ? 'all' : 'skip');
+    await resolveQty(ctx, draft, data === 'qty:all' ? 'all' : 'skip');
     return;
   }
 
   if (!draft || draft.flow !== 'order' || !draft.pending) {
-    await sendMessage(chatId, 'Нет активного выбора.');
+    await say(ctx, 'noActiveChoice');
     return;
   }
   const pending = draft.pending;
 
   if (data === 'new_client:no') {
-    await updateDraft(sb, telegramUserId, { pending: null, client_phone: null, client_name: null, step: 'awaiting_client' });
-    await sendMessage(chatId, 'Ок, введите имя или телефон клиента ещё раз.');
+    await updateDraft(ctx, { pending: null, client_phone: null, client_name: null, step: 'awaiting_client' });
+    await say(ctx, 'order.reenterClient');
     return;
   }
 
   if (data === 'new_client:yes' && (pending.type === 'confirm_new_client' || pending.type === 'pick_client')) {
-    await beginNewClient(sb, telegramUserId, chatId, pending.query);
+    await beginNewClient(ctx, pending.query);
     return;
   }
 
   if (data.startsWith('pick_client:') && pending.type === 'pick_client') {
     const client = pending.candidates[Number(data.split(':')[1])];
     if (!client) {
-      await sendMessage(chatId, 'Не удалось выбрать клиента.');
+      await say(ctx, 'order.clientPickFailed');
       return;
     }
-    await selectClient(sb, telegramUserId, chatId, client, 'Клиент: ');
+    await selectClient(ctx, client, false);
     return;
   }
 
   if (data.startsWith('pick_variant:') && pending.type === 'pick_variant') {
     const candidate = pending.candidates[Number(data.split(':')[1])];
     if (!candidate) {
-      await sendMessage(chatId, 'Не удалось выбрать вариант.');
+      await say(ctx, 'order.variantPickFailed');
       return;
     }
-    await updateDraft(sb, telegramUserId, { pending: null });
-    const outcome = await proposeItem(sb, telegramUserId, chatId, refOf(candidate.variant), pending.quantity);
-    if (outcome === 'added') await showOrderSummary(sb, telegramUserId, chatId);
+    await updateDraft(ctx, { pending: null });
+    const outcome = await proposeItem(ctx, refOf(candidate.variant), pending.quantity, pending.corrections);
+    if (outcome === 'added') await showOrderSummary(ctx);
     return;
   }
 
-  await sendMessage(chatId, 'Неизвестный выбор.');
+  await say(ctx, 'unknownChoice');
 }
 
 export async function handleUpdate(update: TelegramUpdate) {
@@ -1133,7 +1241,7 @@ export async function handleUpdate(update: TelegramUpdate) {
   } catch (err) {
     console.error('telegramBot: service client unavailable', err);
     const chatId = update.message?.chat.id ?? update.callback_query?.message?.chat.id;
-    if (chatId) await sendMessage(chatId, 'Бот временно не настроен. Обратитесь к администратору.');
+    if (chatId) await sendMessage(chatId, both('notConfigured'));
     return;
   }
 
@@ -1145,74 +1253,82 @@ export async function handleUpdate(update: TelegramUpdate) {
   const message = update.message;
   if (!message || typeof message.text !== 'string') return;
 
-  const telegramUserId = message.from.id;
+  const userId = message.from.id;
   const chatId = message.chat.id;
   const text = message.text.trim();
 
-  const session = await getSession(sb, telegramUserId);
-  if (!isSessionActive(session)) {
-    await handlePinAttempt(sb, telegramUserId, chatId, text);
+  const session = await getSession(sb, userId);
+  if (!session || !isLoggedIn(session)) {
+    await handlePinAttempt(sb, userId, chatId, text);
     return;
   }
+
+  const step = onboardingStep(session);
+  if (step) {
+    await handleOnboardingText(sb, session, chatId, text, step);
+    return;
+  }
+
+  const ctx: Ctx = { sb, userId, chatId, lang: session.lang!, staff: session.staff_name! };
 
   if (text.startsWith('/')) {
     // В группах Telegram дописывает имя бота: /sklad@my_bot.
     const cmd = text.split(/\s+/)[0].split('@')[0];
     if (cmd === '/start') {
-      await sendMessage(chatId, COMMANDS_HELP);
+      await say(ctx, 'help');
     } else if (cmd === '/sklad') {
-      await showSkladRoot(sb, chatId);
+      await showSkladRoot(ctx);
     } else if (cmd === '/add_product') {
-      await startAddProduct(sb, telegramUserId, chatId);
+      await startAddProduct(ctx);
     } else if (cmd === '/new_order') {
-      await startNewOrder(sb, telegramUserId, chatId);
+      await startNewOrder(ctx);
     } else if (cmd === '/history_orders') {
-      await showHistory(sb, chatId);
+      await showHistory(ctx);
     } else if (cmd === '/confirm') {
-      await issueOrder(sb, telegramUserId, chatId);
+      await issueOrder(ctx);
     } else if (cmd === '/cancel') {
-      await sb.from('telegram_order_drafts').delete().eq('telegram_user_id', telegramUserId);
-      await sendMessage(chatId, 'Текущее действие отменено, ничего не списано.');
+      await sb.from('telegram_order_drafts').delete().eq('telegram_user_id', userId);
+      await say(ctx, 'cancelled');
     } else {
-      await sendMessage(chatId, `Неизвестная команда.\n\n${COMMANDS_HELP}`);
+      await say(ctx, 'unknownCommand', { help: raw(tr(ctx, 'help')) });
     }
     return;
   }
 
-  const draft = await getDraft(sb, telegramUserId);
+  const draft = await getDraft(sb, userId);
   if (!draft) {
-    await sendMessage(chatId, `Нет активного действия.\n\n${COMMANDS_HELP}`);
+    await say(ctx, 'noActiveAction', { help: raw(tr(ctx, 'help')) });
     return;
   }
 
   if (draft.flow === 'add_product') {
-    await handleAddProductText(sb, draft, chatId, text);
+    await handleAddProductText(ctx, draft, text);
     return;
   }
 
   if (draft.pending) {
-    await sendMessage(chatId, 'Сначала выберите вариант из списка выше (или /cancel).');
+    await say(ctx, 'pickFirst');
     return;
   }
 
   // 'awaiting_phone' — прежнее название шага из миграции 011.
   if (draft.step === 'awaiting_client' || draft.step === 'awaiting_phone') {
-    await handleClientSearch(sb, draft, chatId, text);
+    await handleClientSearch(ctx, text);
   } else if (draft.step === 'awaiting_new_client_name') {
-    await createClientAndContinue(sb, draft, chatId, text, draft.client_phone);
+    await createClientAndContinue(ctx, text, draft.client_phone);
   } else if (draft.step === 'awaiting_new_client_phone') {
     const phone = text.trim() === '-' ? null : text.trim();
-    await createClientAndContinue(sb, draft, chatId, draft.client_name ?? '', phone);
+    await createClientAndContinue(ctx, draft.client_name ?? '', phone);
   } else if (draft.step === 'awaiting_qty') {
     const quantity = parsePositiveNumber(text);
     if (quantity === null) {
-      await sendMessage(chatId, 'Введите число (сколько забрать) или нажмите кнопку «Пропустить позицию».');
+      await say(ctx, 'order.qtyNotNumber');
       return;
     }
-    await resolveQty(sb, draft, chatId, quantity);
+    await resolveQty(ctx, draft, quantity);
   } else if (draft.step === 'adding_items') {
-    await handleAddItems(sb, telegramUserId, chatId, text);
+    await handleAddItems(ctx, text);
   } else {
-    await sendMessage(chatId, 'Наберите /new_order, чтобы начать заказ.');
+    await say(ctx, 'startOrder');
   }
 }
