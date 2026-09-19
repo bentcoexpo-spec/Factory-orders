@@ -276,7 +276,10 @@ export type ParseResult =
   | { kind: 'exact'; variant: ProductVariant; quantity: number; corrections: Correction[]; events: ParseEvent[] }
   | {
       kind: 'choose';
+      // Первые MAX_CHOICES подходящих вариантов (плоский список) и ВСЕ подходящие
+      // варианты: бот показывает пошаговый выбор (товар → цвет → размер) по all.
       candidates: ProductVariant[];
+      all: ProductVariant[];
       quantity: number;
       truncated?: { shown: number; total: number };
       corrections: Correction[];
@@ -511,5 +514,5 @@ export function parseOrderLine(line: string, variants: ProductVariant[]): ParseR
       sizeRank(a.size) - sizeRank(b.size)
   );
   const truncated = ordered.length > MAX_CHOICES ? { shown: MAX_CHOICES, total: ordered.length } : undefined;
-  return { kind: 'choose', candidates: ordered.slice(0, MAX_CHOICES), quantity, truncated, corrections, events };
+  return { kind: 'choose', candidates: ordered.slice(0, MAX_CHOICES), all: ordered, quantity, truncated, corrections, events };
 }

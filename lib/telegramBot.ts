@@ -84,13 +84,22 @@ interface ClientRef {
 // одноразовый код tok: он зашит в кнопки, и нажатие принимается, только если
 // код совпал с текущим — повторное нажатие или кнопка из старого сообщения
 // не может ответить на следующий вопрос.
+// Где пользователь находится в пошаговом выборе варианта (товар → цвет → размер,
+// как в /sklad): выбранный товар (product_id) и цвет (ключ группы цвета).
+interface PickNav {
+  product?: string;
+  color?: string;
+}
+
 interface PickVariantPending {
   type: 'pick_variant';
-  candidates: { variant: ProductVariant }[];
+  // Все варианты, подходящие под строку заказа (id). Выбор строится по ним, а
+  // остатки при каждом показе читаются из базы заново.
+  ids: string[];
   quantity: number;
   corrections?: Correction[];
   line: string;
-  truncated?: { shown: number; total: number };
+  nav: PickNav;
   tok: string;
 }
 
@@ -479,7 +488,7 @@ async function resumeDraft(ctx: Ctx) {
   }
 
   const p = draft.pending;
-  if (p?.type === 'pick_variant') return sendPickVariant(ctx, await rotatePending(ctx, p));
+  if (p?.type === 'pick_variant') return stepPick(ctx, p, draft.flow_data?.queue ?? []);
   if (p?.type === 'pick_client') return sendClientChoice(ctx, await rotatePending(ctx, p));
   if (p?.type === 'confirm_new_client') return sendNewClientConfirm(ctx, await rotatePending(ctx, p));
   if (p?.type === 'confirm_phone_dup') return sendPhoneDup(ctx, await rotatePending(ctx, p));
@@ -876,12 +885,154 @@ async function handleAddItems(ctx: Ctx, text: string) {
   await processLines(ctx, lines, false);
 }
 
-async function sendPickVariant(ctx: Ctx, pending: PickVariantPending) {
-  const buttons: InlineButton[][] = pending.candidates.map(({ variant: v }, idx) => [
-    { text: `${v.product_name} — ${variantLabel(v) ?? '—'} (${fmt(v.stock_quantity)} ${tr(ctx, 'pcs')})`, callback_data: `pick_variant:${idx}:${pending.tok}` },
-  ]);
-  const note = pending.truncated ? raw(tr(ctx, 'order.truncated', pending.truncated)) : '';
-  await say(ctx, 'order.pickVariant', { line: pending.line, note }, buttons);
+// Пошаговый выбор варианта — та же логика, что в /sklad: товар → цвет → размеры
+// с остатками. Уровни, где выбирать не из чего (один товар, один цвет),
+// пропускаются, а когда остаётся единственный вариант, бот сразу задаёт вопрос о
+// количестве. Навигация правит то же сообщение; каждый показ выдаёт новый код
+// кнопок, поэтому старые кнопки перестают работать.
+function pickScope(pool: ProductVariant[], nav: PickNav) {
+  const products = new Map<string, string>();
+  for (const v of pool) products.set(v.product_id, v.product_name);
+  const productId = nav.product && products.has(nav.product) ? nav.product : products.size === 1 ? pool[0].product_id : undefined;
+  const inProduct = productId ? pool.filter((v) => v.product_id === productId) : pool;
+  const groups = groupByColor(inProduct);
+  const group = nav.color !== undefined ? groups.find((g) => g.key === nav.color) : groups.length === 1 ? groups[0] : undefined;
+  return { products, productId, inProduct, groups, group };
+}
+
+async function loadPickPool(ctx: Ctx, pending: PickVariantPending): Promise<ProductVariant[]> {
+  const wanted = new Set(pending.ids);
+  return (await loadFinishedVariants(ctx.sb)).filter((v) => wanted.has(v.id));
+}
+
+async function stepPick(ctx: Ctx, pending: PickVariantPending, queue: string[], messageId?: number) {
+  const pool = await loadPickPool(ctx, pending);
+  if (pool.length === 0) {
+    await say(ctx, 'order.variantPickFailed');
+    await continueOrSummary(ctx, queue);
+    return;
+  }
+
+  const { products, productId, inProduct, groups, group } = pickScope(pool, pending.nav);
+  const pcs = tr(ctx, 'pcs');
+  const tok = newTok();
+  const skipRow = [{ text: tr(ctx, 'order.skipItem'), callback_data: `pv:s:${tok}` }];
+  const save = (nav: PickNav) => updateDraft(ctx, { pending: { ...pending, nav, tok } });
+
+  // 1. Товар (только если строка подошла к нескольким товарам).
+  if (!productId) {
+    await save({});
+    const buttons: InlineButton[][] = Array.from(products.entries())
+      .sort((a, b) => a[1].localeCompare(b[1], 'ru'))
+      .map(([id, name]) => {
+        const total = pool.filter((v) => v.product_id === id).reduce((s, v) => s + Number(v.stock_quantity), 0);
+        return [{ text: `${name} — ${fmt(total)} ${pcs}`, callback_data: `pv:p:${id}:${tok}` }];
+      });
+    buttons.push(skipRow);
+    await present(ctx, messageId, tr(ctx, 'order.pickProduct', { line: pending.line }), buttons);
+    return;
+  }
+
+  // 2. Цвет (только если у товара среди подходящих несколько цветов).
+  if (!group) {
+    await save({ product: productId });
+    const buttons: InlineButton[][] = groups.map((g, i) => [
+      { text: `${g.label ?? tr(ctx, 'sklad.noColor')} — ${fmt(g.total)} ${pcs}`, callback_data: `pv:c:${i}:${tok}` },
+    ]);
+    if (products.size > 1) buttons.push([{ text: tr(ctx, 'btn.toProducts'), callback_data: `pv:b:${tok}` }]);
+    buttons.push(skipRow);
+    await present(ctx, messageId, tr(ctx, 'order.pickColor', { product: inProduct[0].product_name, line: pending.line }), buttons);
+    return;
+  }
+
+  // 3. Размеры выбранного цвета с остатками. Единственный вариант — сразу к количеству.
+  const variants = group.variants;
+  if (variants.length === 1) {
+    await updateDraft(ctx, { pending: null });
+    if (messageId) await removeKeyboard(ctx.chatId, messageId);
+    const outcome = await proposeItem(ctx, refOf(variants[0]), pending.quantity, pending.corrections, queue);
+    if (outcome === 'rejected') await continueOrSummary(ctx, queue);
+    return;
+  }
+
+  await save({ product: productId, color: group.key });
+  const sorted = [...variants].sort((a, b) => sizeRank(a.size) - sizeRank(b.size) || String(a.size ?? '').localeCompare(String(b.size ?? ''), 'ru'));
+  const sizeKey = (v: ProductVariant) => `${norm(v.size)}|${v.print_type}`;
+  const sameSize = new Map<string, number>();
+  for (const v of sorted) sameSize.set(sizeKey(v), (sameSize.get(sizeKey(v)) ?? 0) + 1);
+  const cells: InlineButton[] = sorted.map((v) => {
+    const status = stockStatus(Number(v.stock_quantity));
+    const icon = status === 'out' ? '❌ ' : status === 'low' ? '⚠️ ' : '';
+    const size = v.size ?? tr(ctx, 'sklad.noSize');
+    const print = v.print_type && v.print_type !== NO_PRINT ? ` (${v.print_type})` : '';
+    // «Белый M» и «БЕЛЫЙ M» — два разных варианта в базе: различаем по написанию цвета.
+    const dup = (sameSize.get(sizeKey(v)) ?? 0) > 1 && v.color ? ` [${v.color}]` : '';
+    return { text: `${icon}${size}${print}${dup} — ${fmt(v.stock_quantity)} ${pcs}`, callback_data: `pv:v:${v.id}:${tok}` };
+  });
+  const buttons: InlineButton[][] = [];
+  const perRow = cells.length > 4 ? 2 : 1;
+  for (let i = 0; i < cells.length; i += perRow) buttons.push(cells.slice(i, i + perRow));
+  if (groups.length > 1) buttons.push([{ text: tr(ctx, 'btn.toColors'), callback_data: `pv:b:${tok}` }]);
+  else if (products.size > 1) buttons.push([{ text: tr(ctx, 'btn.toProducts'), callback_data: `pv:b:${tok}` }]);
+  buttons.push(skipRow);
+  await present(
+    ctx,
+    messageId,
+    tr(ctx, 'order.pickSize', {
+      product: inProduct[0].product_name,
+      color: group.label ?? tr(ctx, 'sklad.noColor'),
+      line: pending.line,
+      qty: fmt(pending.quantity),
+    }),
+    buttons
+  );
+}
+
+// Нажатия в пошаговом выборе: pv:p (товар), pv:c (цвет), pv:v (размер = вариант),
+// pv:b (назад), pv:s (пропустить строку).
+async function handlePickCallback(ctx: Ctx, draft: Draft, pending: PickVariantPending, base: string, messageId?: number) {
+  const queue = draft.flow_data?.queue ?? [];
+  const [, kind, arg] = base.split(':');
+
+  if (kind === 's') {
+    if (messageId) await removeKeyboard(ctx.chatId, messageId);
+    await say(ctx, 'order.skipped');
+    await continueOrSummary(ctx, queue);
+    return;
+  }
+
+  const pool = await loadPickPool(ctx, pending);
+
+  if (kind === 'v') {
+    if (messageId) await removeKeyboard(ctx.chatId, messageId);
+    const variant = pool.find((v) => v.id === arg);
+    if (!variant) {
+      await say(ctx, 'order.variantPickFailed');
+      await stepPick(ctx, pending, queue);
+      return;
+    }
+    await updateDraft(ctx, { pending: null });
+    const outcome = await proposeItem(ctx, refOf(variant), pending.quantity, pending.corrections, queue);
+    if (outcome === 'rejected') await continueOrSummary(ctx, queue);
+    return;
+  }
+
+  const nav: PickNav = { ...pending.nav };
+  const scope = pickScope(pool, nav);
+  if (kind === 'p' && scope.products.has(arg)) {
+    nav.product = arg;
+    delete nav.color;
+  } else if (kind === 'c' && scope.groups[Number(arg)]) {
+    nav.color = scope.groups[Number(arg)].key;
+  } else if (kind === 'b') {
+    // Назад: с размеров — к цветам (если они были уровнем выбора), иначе к товарам.
+    if (nav.color !== undefined && scope.groups.length > 1) delete nav.color;
+    else {
+      delete nav.product;
+      delete nav.color;
+    }
+  }
+  await stepPick(ctx, { ...pending, nav }, queue, messageId);
 }
 
 // Разбирает строки по очереди. Останавливается на первой строке, которой
@@ -905,15 +1056,15 @@ async function processLines(ctx: Ctx, lines: string[], summaryAtEnd: boolean) {
     } else {
       const pending: PickVariantPending = {
         type: 'pick_variant',
-        candidates: result.candidates.map((variant) => ({ variant })),
+        ids: result.all.map((v) => v.id),
         quantity: result.quantity,
         corrections: result.corrections,
         line: lines[i],
-        truncated: result.truncated,
+        nav: {},
         tok: newTok(),
       };
       await updateDraft(ctx, { pending, flow_data: { queue: rest } });
-      await sendPickVariant(ctx, pending);
+      await stepPick(ctx, pending, rest);
       return;
     }
   }
@@ -1550,8 +1701,9 @@ async function routeCallback(ctx: Ctx, cq: TelegramCallbackQuery) {
 
   // Остальные кнопки — ответы на вопросы бота. Нажатую кнопку сразу убираем с
   // экрана, а принимается ответ, только если код вопроса совпал с текущим.
-  if (messageId) await removeKeyboard(ctx.chatId, messageId);
   const { base, tok } = splitCallback(data);
+  // Навигация по выбору варианта правит то же сообщение, там кнопки не убираем.
+  if (messageId && !base.startsWith('pv:')) await removeKeyboard(ctx.chatId, messageId);
 
   if (base === 'issue:yes' || base === 'issue:cancel') {
     await handleIssueCallback(ctx, base, tok);
@@ -1611,16 +1763,14 @@ async function routeCallback(ctx: Ctx, cq: TelegramCallbackQuery) {
     return;
   }
 
-  if (base.startsWith('pick_variant:') && pending.type === 'pick_variant') {
-    const candidate = pending.candidates[Number(base.split(':')[1])];
-    if (!candidate) {
-      await say(ctx, 'order.variantPickFailed');
-      return;
-    }
-    const queue = draft.flow_data?.queue ?? [];
-    await updateDraft(ctx, { pending: null });
-    const outcome = await proposeItem(ctx, refOf(candidate.variant), pending.quantity, pending.corrections, queue);
-    if (outcome === 'rejected') await continueOrSummary(ctx, queue);
+  if (base.startsWith('pv:') && pending.type === 'pick_variant') {
+    await handlePickCallback(ctx, draft, pending, base, messageId);
+    return;
+  }
+
+  // Кнопки прежнего плоского списка (до обновления бота) — устарели.
+  if (base.startsWith('pick_variant:')) {
+    await say(ctx, 'staleAction');
     return;
   }
 
