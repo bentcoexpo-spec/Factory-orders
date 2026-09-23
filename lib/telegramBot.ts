@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { NO_PRINT, ProductVariant, stockStatus, variantLabel } from '@/lib/types';
+import { NO_PRINT, ORDER_STATUSES, ProductVariant, stockStatus, variantLabel } from '@/lib/types';
 import {
   sendMessage,
   editMessageText,
@@ -1238,6 +1238,20 @@ async function issueOrder(ctx: Ctx) {
   const lines = draft.items.map((it) =>
     tr(ctx, 'order.issuedLine', { title: raw(itemTitle(it)), qty: fmt(it.quantity), left: fmt(remainingById.get(it.variantId) ?? 0) })
   );
+  await logAction(ctx, {
+    kind: 'order_issued',
+    order_id: order.id,
+    quantity: draft.items.reduce((s, it) => s + it.quantity, 0),
+    details: {
+      client: draft.client_name ?? '',
+      items: draft.items.map((it) => ({
+        variantId: it.variantId,
+        title: plainItemTitle(it),
+        quantity: it.quantity,
+        stockAfter: remainingById.get(it.variantId) ?? 0,
+      })),
+    },
+  });
   await say(ctx, 'order.issued', {
     client: draft.client_name ?? '',
     staff: ctx.staff,
@@ -1410,6 +1424,7 @@ async function finalizeProduct(ctx: Ctx, draft: Draft) {
 
   const { data: products } = await sb.from('products').select('id, name');
   let productId: string | null = (products ?? []).find((p: { name: string }) => norm(p.name) === norm(ap.name!))?.id ?? null;
+  let createdProduct = false;
 
   if (!productId) {
     const { data: created, error } = await sb
@@ -1419,6 +1434,7 @@ async function finalizeProduct(ctx: Ctx, draft: Draft) {
       .single();
     if (created) {
       productId = created.id;
+      createdProduct = true;
     } else {
       // Мог создать параллельный запрос (уникальный индекс по названию) — перечитываем.
       const { data: again } = await sb.from('products').select('id, name');
@@ -1433,6 +1449,7 @@ async function finalizeProduct(ctx: Ctx, draft: Draft) {
 
   const label = variantLabel({ color, size, print_type: NO_PRINT });
   const title = raw(`${escapeHtml(ap.name)}${label ? ' — ' + escapeHtml(label) : ''}`);
+  const plainTitle = `${ap.name}${label ? ' — ' + label : ''}`;
 
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data: existingRows } = await sb
@@ -1456,19 +1473,34 @@ async function finalizeProduct(ctx: Ctx, draft: Draft) {
       if (!updated || updated.length === 0) continue;
 
       await sb.from('telegram_order_drafts').delete().eq('telegram_user_id', ctx.userId);
+      await logAction(ctx, {
+        kind: 'product_added',
+        product_id: productId,
+        variant_id: existing.id,
+        quantity,
+        stock_before: before,
+        stock_after: before + quantity,
+        created_product: createdProduct,
+        created_variant: false,
+        details: { title: plainTitle, productName: ap.name },
+      });
       await say(ctx, 'ap.doneExisting', { title, after: fmt(before + quantity), before: fmt(before), added: fmt(quantity) });
       return;
     }
 
-    const { error } = await sb.from('product_variants').insert({
-      product_id: productId,
-      color,
-      size,
-      print_type: NO_PRINT,
-      unit: 'шт',
-      stock_quantity: quantity,
-    });
-    if (error) {
+    const { data: createdVariant, error } = await sb
+      .from('product_variants')
+      .insert({
+        product_id: productId,
+        color,
+        size,
+        print_type: NO_PRINT,
+        unit: 'шт',
+        stock_quantity: quantity,
+      })
+      .select('id')
+      .single();
+    if (error || !createdVariant) {
       // Вариант могли создать между проверкой и вставкой — пробуем ещё раз как «уже был».
       if (attempt < 2) continue;
       console.error('telegram add_product: insert variant failed', error);
@@ -1477,6 +1509,17 @@ async function finalizeProduct(ctx: Ctx, draft: Draft) {
     }
 
     await sb.from('telegram_order_drafts').delete().eq('telegram_user_id', ctx.userId);
+    await logAction(ctx, {
+      kind: 'product_added',
+      product_id: productId,
+      variant_id: createdVariant.id,
+      quantity,
+      stock_before: 0,
+      stock_after: quantity,
+      created_product: createdProduct,
+      created_variant: true,
+      details: { title: plainTitle, productName: ap.name },
+    });
     await say(ctx, 'ap.doneNew', { title, qty: fmt(quantity) });
     return;
   }
@@ -1585,6 +1628,343 @@ async function resumeAddProduct(ctx: Ctx, draft: Draft) {
   if (draft.step === 'ap_qty') return say(ctx, 'ap.qty', { size: ap.size ?? tr(ctx, 'ap.noSizeLabel') });
   if (draft.step === 'ap_confirm' && ap.qty) return askConfirm(ctx, draft, ap.qty);
   await say(ctx, 'ap.startOver');
+}
+
+// ---------------------------------------------------------------------------
+// /undo — отмена своего последнего действия (не старше 24 часов)
+//
+// Каждое действие бота (выдача заказа, добавление товара на склад) записывается
+// в telegram_actions вместе с тем, что нужно для точной отмены. Отменяются
+// только действия этого же Telegram-аккаунта и только сделанные через бота.
+// Остатки при отмене заказа возвращает существующий триггер смены статуса
+// («Выдан» → «Отменён»), арифметику остатков заказа бот не дублирует.
+// ---------------------------------------------------------------------------
+
+const UNDO_WINDOW_MS = 24 * 3600 * 1000;
+
+interface ActionItem {
+  variantId: string;
+  title: string;
+  quantity: number;
+  stockAfter: number;
+}
+
+interface BotAction {
+  id: string;
+  created_at: string;
+  telegram_user_id: number;
+  staff_name: string | null;
+  kind: 'order_issued' | 'product_added';
+  order_id: string | null;
+  product_id: string | null;
+  variant_id: string | null;
+  quantity: number | null;
+  stock_before: number | null;
+  stock_after: number | null;
+  created_product: boolean;
+  created_variant: boolean;
+  details: { client?: string; items?: ActionItem[]; title?: string; productName?: string } | null;
+  confirm_tok: string | null;
+  undone_at: string | null;
+}
+
+// Журнал пишется после самого действия: если запись не удалась, действие
+// остаётся в силе, но отменить его через /undo будет нельзя (в логе — ошибка).
+async function logAction(ctx: Ctx, row: Record<string, unknown>) {
+  try {
+    const { error } = await ctx.sb.from('telegram_actions').insert({ telegram_user_id: ctx.userId, staff_name: ctx.staff, ...row });
+    if (error) console.error('telegram action log failed', error.message);
+  } catch (err) {
+    console.error('telegram action log threw', err);
+  }
+}
+
+function plainItemTitle(it: DraftItem): string {
+  const label = variantLabel({ color: it.color, size: it.size, print_type: it.printType });
+  return it.productName + (label ? ' — ' + label : '');
+}
+
+const whenFormat = (iso: string) =>
+  new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: TIMEZONE }).format(new Date(iso));
+
+const statusLabel = (status: string) => ORDER_STATUSES.find((s) => s.value === status)?.label ?? status;
+
+async function latestUndoable(ctx: Ctx): Promise<BotAction | null> {
+  const since = new Date(Date.now() - UNDO_WINDOW_MS).toISOString();
+  const { data } = await ctx.sb
+    .from('telegram_actions')
+    .select('*')
+    .eq('telegram_user_id', ctx.userId)
+    .is('undone_at', null)
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  return ((data ?? [])[0] as BotAction) ?? null;
+}
+
+type Assessment = { blocked: string } | { preview: string };
+
+interface VariantInfo {
+  id: string;
+  product_id: string;
+  product_name: string;
+  color: string | null;
+  size: string | null;
+  print_type: string | null;
+  stock_quantity: number | string;
+}
+
+// Можно ли удалить товар, созданный вместе с вариантом: у него не осталось
+// других вариантов и цену никто не выставлял.
+async function productIsDisposable(sb: SupabaseClient, productId: string, exceptVariantId: string): Promise<boolean> {
+  const { data: others } = await sb.from('product_variants').select('id').eq('product_id', productId);
+  if ((others ?? []).some((v: { id: string }) => v.id !== exceptVariantId)) return false;
+  const { data: product } = await sb.from('products').select('id, price').eq('id', productId).maybeSingle();
+  return !!product && Number(product.price ?? 0) === 0;
+}
+
+async function assessOrderUndo(ctx: Ctx, a: BotAction): Promise<Assessment & { items?: { variantId: string; title: string; qty: number }[] }> {
+  const { sb } = ctx;
+  const { data: order } = a.order_id
+    ? await sb.from('orders').select('id, status, stock_deducted, comment').eq('id', a.order_id).maybeSingle()
+    : { data: null };
+  if (!order) return { blocked: tr(ctx, 'undo.blockedOrderMissing') };
+  if (order.status !== 'issued') return { blocked: tr(ctx, 'undo.blockedOrderChanged', { status: statusLabel(order.status) }) };
+  if (!order.stock_deducted) return { blocked: tr(ctx, 'undo.blockedNoDeduction') };
+
+  const { data: orderItems } = await sb.from('order_items').select('variant_id, quantity').eq('order_id', order.id);
+  const items = (orderItems ?? []) as { variant_id: string; quantity: number | string }[];
+  const { data: variantRows } = await sb
+    .from('product_variants_view')
+    .select('id, product_id, product_name, color, size, print_type, stock_quantity')
+    .in('id', items.map((i) => i.variant_id));
+  const variants = new Map<string, VariantInfo>((variantRows ?? []).map((v: VariantInfo) => [v.id, v]));
+  const logged = new Map((a.details?.items ?? []).map((i) => [i.variantId, i]));
+
+  const shown: { variantId: string; title: string; qty: number }[] = [];
+  const lines: string[] = [];
+  const stockWarnings: string[] = [];
+  let itemsChanged = items.length !== logged.size;
+  for (const it of items) {
+    const v = variants.get(it.variant_id);
+    const qty = Number(it.quantity);
+    const current = Number(v?.stock_quantity ?? 0);
+    const title = v ? variantTitle({ product_name: v.product_name, color: v.color, size: v.size, print_type: v.print_type }) : '—';
+    shown.push({ variantId: it.variant_id, title, qty });
+    lines.push(tr(ctx, 'undo.orderLine', { title: raw(title), qty: fmt(qty), current: fmt(current), after: fmt(current + qty) }));
+    const was = logged.get(it.variant_id);
+    if (!was || Number(was.quantity) !== qty) itemsChanged = true;
+    if (was && Number(was.stockAfter) !== current) {
+      stockWarnings.push(tr(ctx, 'undo.warnStockItem', { title: raw(title), was: fmt(was.stockAfter), current: fmt(current) }));
+    }
+  }
+
+  const warn =
+    (itemsChanged ? tr(ctx, 'undo.warnItemsChanged') : '') +
+    (stockWarnings.length > 0 ? tr(ctx, 'undo.warnStock', { detail: raw(stockWarnings.join('; ')) }) : '');
+  return {
+    items: shown,
+    preview: tr(ctx, 'undo.confirmOrder', {
+      client: a.details?.client ?? '—',
+      when: whenFormat(a.created_at),
+      lines: raw(lines.join('\n')),
+      warn: raw(warn),
+    }),
+  };
+}
+
+async function assessAddUndo(ctx: Ctx, a: BotAction): Promise<Assessment> {
+  const { sb } = ctx;
+  const title = raw(escapeHtml(a.details?.title ?? ''));
+  const qty = Number(a.quantity ?? 0);
+  const { data: v } = a.variant_id
+    ? await sb.from('product_variants_view').select('id, product_id, product_name, color, size, print_type, stock_quantity').eq('id', a.variant_id).maybeSingle()
+    : { data: null };
+  if (!v) return { blocked: tr(ctx, 'undo.blockedVariantGone', { title }) };
+  const current = Number(v.stock_quantity);
+
+  if (a.created_variant) {
+    const used = () => ({ blocked: tr(ctx, 'undo.blockedVariantUsed', { title, current: fmt(current), qty: fmt(qty) }) });
+    if (current !== qty) return used();
+    const [orderRefs, receiptRefs] = await Promise.all([
+      sb.from('order_items').select('id').eq('variant_id', v.id).limit(1),
+      sb.from('stock_receipts').select('id').eq('variant_id', v.id).limit(1),
+    ]);
+    if ((orderRefs.data?.length ?? 0) > 0 || (receiptRefs.data?.length ?? 0) > 0) return used();
+    const withProduct = a.created_product && a.product_id && (await productIsDisposable(sb, a.product_id, v.id));
+    return {
+      preview: tr(ctx, 'undo.confirmNewVariant', {
+        title,
+        qty: fmt(qty),
+        when: whenFormat(a.created_at),
+        product: raw(withProduct ? tr(ctx, 'undo.alsoProduct', { name: v.product_name }) : ''),
+      }),
+    };
+  }
+
+  if (current < qty) return { blocked: tr(ctx, 'undo.blockedConsumed', { title, current: fmt(current), qty: fmt(qty) }) };
+  const warn =
+    a.stock_after !== null && Number(a.stock_after) !== current
+      ? tr(ctx, 'undo.warnStock', { detail: raw(tr(ctx, 'undo.warnStockItem', { title, was: fmt(a.stock_after), current: fmt(current) })) })
+      : '';
+  return {
+    preview: tr(ctx, 'undo.confirmAdd', {
+      title,
+      qty: fmt(qty),
+      when: whenFormat(a.created_at),
+      current: fmt(current),
+      after: fmt(current - qty),
+      warn: raw(warn),
+    }),
+  };
+}
+
+async function startUndo(ctx: Ctx) {
+  const action = await latestUndoable(ctx);
+  if (!action) {
+    await say(ctx, 'undo.none');
+    return;
+  }
+  const assessment = action.kind === 'order_issued' ? await assessOrderUndo(ctx, action) : await assessAddUndo(ctx, action);
+  // Самое последнее действие нельзя отменить — сообщаем причину и не «перепрыгиваем»
+  // к более раннему: отмена идёт строго по порядку.
+  if ('blocked' in assessment) {
+    await sendMessage(ctx.chatId, assessment.blocked);
+    return;
+  }
+  const tok = newTok();
+  await ctx.sb.from('telegram_actions').update({ confirm_tok: tok }).eq('id', action.id);
+  await sendMessage(ctx.chatId, assessment.preview, [
+    [{ text: tr(ctx, 'undo.okBtn'), callback_data: `undo:ok:${tok}` }],
+    [{ text: tr(ctx, 'undo.keepBtn'), callback_data: `undo:no:${tok}` }],
+  ]);
+}
+
+type UndoResult = { ok: true; message: string } | { ok: false; message: string };
+
+async function undoOrder(ctx: Ctx, a: BotAction): Promise<UndoResult> {
+  const { sb } = ctx;
+  const assessment = await assessOrderUndo(ctx, a);
+  if ('blocked' in assessment) return { ok: false, message: assessment.blocked };
+
+  const { data: order } = await sb.from('orders').select('comment').eq('id', a.order_id ?? '').maybeSingle();
+  const note = `Отменён через /undo: ${ctx.staff}, ${whenFormat(now())}`;
+  const comment = [order?.comment, note].filter(Boolean).join(' · ');
+  // Условное обновление: только если заказ всё ещё «Выдан». Возврат остатка
+  // делает существующий триггер смены статуса (при cancelled и stock_deducted).
+  const { data: updated, error } = await sb
+    .from('orders')
+    .update({ status: 'cancelled', comment })
+    .eq('id', a.order_id ?? '')
+    .eq('status', 'issued')
+    .select('id');
+  if (error || !updated || updated.length === 0) return { ok: false, message: tr(ctx, 'undo.raced') };
+
+  const items = assessment.items ?? [];
+  const { data: rows } = await sb.from('product_variants').select('id, stock_quantity').in('id', items.map((i) => i.variantId));
+  const stockNow = new Map((rows ?? []).map((r: { id: string; stock_quantity: number | string }) => [r.id, Number(r.stock_quantity)]));
+  const lines = items.map((i) => tr(ctx, 'undo.doneOrderLine', { title: raw(i.title), current: fmt(stockNow.get(i.variantId) ?? 0) }));
+  return { ok: true, message: tr(ctx, 'undo.doneOrder', { lines: raw(lines.join('\n')) }) };
+}
+
+async function undoProductAdded(ctx: Ctx, a: BotAction): Promise<UndoResult> {
+  const { sb } = ctx;
+  const assessment = await assessAddUndo(ctx, a);
+  if ('blocked' in assessment) return { ok: false, message: assessment.blocked };
+  const title = raw(escapeHtml(a.details?.title ?? ''));
+  const qty = Number(a.quantity ?? 0);
+
+  if (a.created_variant) {
+    // Удаляем только если остаток всё ещё равен добавленному; внешние ключи
+    // (заказы, приходы) не дадут удалить вариант, которым уже пользовались.
+    const { data: deleted, error } = await sb
+      .from('product_variants')
+      .delete()
+      .eq('id', a.variant_id ?? '')
+      .eq('stock_quantity', qty)
+      .select('id');
+    if (error || !deleted || deleted.length === 0) return { ok: false, message: tr(ctx, 'undo.raced') };
+    let productNote = '';
+    if (a.created_product && a.product_id && (await productIsDisposable(sb, a.product_id, a.variant_id ?? ''))) {
+      const { error: productError } = await sb.from('products').delete().eq('id', a.product_id).eq('price', 0);
+      if (!productError) productNote = tr(ctx, 'undo.alsoProduct', { name: a.details?.productName ?? '' });
+    }
+    return { ok: true, message: tr(ctx, 'undo.doneNewVariant', { title, product: raw(productNote) }) };
+  }
+
+  // Вычитаем добавленное «по прочитанному значению»: если остаток успели
+  // изменить, повторяем с новым и снова проверяем, что вычитать есть из чего.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data: row } = await sb.from('product_variants').select('stock_quantity').eq('id', a.variant_id ?? '').maybeSingle();
+    if (!row) return { ok: false, message: tr(ctx, 'undo.blockedVariantGone', { title }) };
+    const current = Number(row.stock_quantity);
+    if (current < qty) return { ok: false, message: tr(ctx, 'undo.blockedConsumed', { title, current: fmt(current), qty: fmt(qty) }) };
+    const { data: updated } = await sb
+      .from('product_variants')
+      .update({ stock_quantity: current - qty })
+      .eq('id', a.variant_id ?? '')
+      .eq('stock_quantity', row.stock_quantity)
+      .select('id');
+    if (updated && updated.length > 0) return { ok: true, message: tr(ctx, 'undo.doneAdd', { title, current: fmt(current - qty) }) };
+  }
+  return { ok: false, message: tr(ctx, 'undo.raced') };
+}
+
+async function performUndo(ctx: Ctx, a: BotAction) {
+  const { sb } = ctx;
+  // Отмена «занимается» ДО выполнения: второе нажатие не отменит дважды.
+  const { data: claimed } = await sb
+    .from('telegram_actions')
+    .update({ undone_at: now(), confirm_tok: null })
+    .eq('id', a.id)
+    .is('undone_at', null)
+    .select('id');
+  if (!claimed || claimed.length === 0) {
+    await say(ctx, 'staleAction');
+    return;
+  }
+
+  let result: UndoResult;
+  try {
+    result = a.kind === 'order_issued' ? await undoOrder(ctx, a) : await undoProductAdded(ctx, a);
+  } catch (err) {
+    console.error('telegram undo failed', err);
+    result = { ok: false, message: tr(ctx, 'undo.raced') };
+  }
+
+  if (!result.ok) {
+    // Не вышло — освобождаем действие, чтобы его можно было отменить позже.
+    await sb.from('telegram_actions').update({ undone_at: null }).eq('id', a.id);
+    await sendMessage(ctx.chatId, result.message);
+    return;
+  }
+
+  await sb.from('telegram_actions').update({ undo_note: `${ctx.staff}, ${now()}` }).eq('id', a.id);
+  const more = await latestUndoable(ctx);
+  await sendMessage(ctx.chatId, result.message + (more ? tr(ctx, 'undo.more') : ''));
+}
+
+async function handleUndoCallback(ctx: Ctx, base: string, tok: string) {
+  const since = new Date(Date.now() - UNDO_WINDOW_MS).toISOString();
+  const { data } = await ctx.sb
+    .from('telegram_actions')
+    .select('*')
+    .eq('telegram_user_id', ctx.userId)
+    .eq('confirm_tok', tok)
+    .is('undone_at', null)
+    .gte('created_at', since)
+    .limit(1);
+  const action = ((data ?? [])[0] as BotAction) ?? null;
+  if (!action) {
+    await say(ctx, 'staleAction');
+    return;
+  }
+  if (base === 'undo:no') {
+    await ctx.sb.from('telegram_actions').update({ confirm_tok: null }).eq('id', action.id);
+    await say(ctx, 'undo.kept');
+    return;
+  }
+  await performUndo(ctx, action);
 }
 
 // ---------------------------------------------------------------------------
@@ -1707,6 +2087,11 @@ async function routeCallback(ctx: Ctx, cq: TelegramCallbackQuery) {
 
   if (base === 'issue:yes' || base === 'issue:cancel') {
     await handleIssueCallback(ctx, base, tok);
+    return;
+  }
+
+  if (base === 'undo:ok' || base === 'undo:no') {
+    await handleUndoCallback(ctx, base, tok);
     return;
   }
 
@@ -1834,6 +2219,8 @@ async function routeMessage(ctx: Ctx, text: string) {
       await showHistory(ctx);
     } else if (cmd === '/confirm') {
       await issueOrder(ctx);
+    } else if (cmd === '/undo') {
+      await startUndo(ctx);
     } else if (cmd === '/cancel') {
       await sb.from('telegram_order_drafts').delete().eq('telegram_user_id', userId);
       await say(ctx, 'cancelled');

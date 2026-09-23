@@ -96,6 +96,26 @@ export async function removeKeyboard(chatId: number, messageId: number) {
   }
 }
 
+// Отправляет сообщение в конкретный чат и сообщает, удалось ли (для фоновых
+// задач вроде ежедневного итога, где нужно знать об успехе, чтобы повторить).
+export async function sendMessageChecked(chatId: number | string, text: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${TELEGRAM_API}/bot${token()}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+    });
+    if (!res.ok) {
+      console.error('telegram sendMessageChecked failed', await res.text());
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('telegram sendMessageChecked threw', err);
+    return false;
+  }
+}
+
 export async function answerCallbackQuery(callbackQueryId: string, text?: string) {
   const res = await fetch(`${TELEGRAM_API}/bot${token()}/answerCallbackQuery`, {
     method: 'POST',

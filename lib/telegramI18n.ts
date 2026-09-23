@@ -30,6 +30,7 @@ const ru = {
     '/add_product — добавить товар на склад\n' +
     '/new_order — выдать заказ клиенту (списание сразу)\n' +
     '/history_orders — история выданных заказов\n' +
+    '/undo — отменить своё последнее действие (до 24 часов)\n' +
     '/cancel — отменить текущее действие',
   welcome: 'Добро пожаловать, {name}! Вход выполнен на 24 часа.\n\n{help}',
   unknownCommand: 'Неизвестная команда.\n\n{help}',
@@ -171,6 +172,35 @@ const ru = {
   'history.client': 'Клиент',
   'history.product': 'Товар',
 
+  // --- /undo
+  'undo.none': 'Нечего отменять: за последние 24 часа у вас нет действий, которые можно отменить.',
+  'undo.confirmOrder':
+    '<b>Отменить выданный заказ?</b>\nКлиент: {client}\nВыдан: {when}\n{lines}\n\nЗаказ получит статус «Отменён», остаток вернётся на склад.{warn}',
+  'undo.orderLine': '• {title} — {qty} шт (сейчас {current} → станет {after})',
+  'undo.confirmAdd': '<b>Отменить добавление на склад?</b>\n{title}: +{qty} шт (добавлено {when})\nСейчас {current} → станет {after}.{warn}',
+  'undo.confirmNewVariant': '<b>Отменить создание варианта?</b>\n{title} — было добавлено {qty} шт ({when})\nВариант будет удалён{product}.',
+  'undo.alsoProduct': ' вместе с новым товаром «{name}»',
+  'undo.warnStock': '\n⚠️ С момента действия остаток менялся ({detail}). Проверьте цифры выше.',
+  'undo.warnStockItem': '{title}: было {was}, сейчас {current}',
+  'undo.warnItemsChanged': '\n⚠️ Состав заказа изменён в вебе с момента выдачи — показаны текущие позиции.',
+  'undo.blockedOrderChanged': 'Отменить нельзя: заказ уже изменён в вебе (статус: {status}).',
+  'undo.blockedOrderMissing': 'Отменить нельзя: заказ не найден (возможно, удалён в вебе).',
+  'undo.blockedNoDeduction': 'Отменить нельзя: по этому заказу остаток не списывался — возвращать нечего.',
+  'undo.blockedConsumed':
+    'Отменить нельзя: после добавления «{title}» остаток уменьшился до {current}, а добавляли {qty} шт — эти штуки уже ушли со склада.',
+  'undo.blockedVariantUsed':
+    'Отменить нельзя: вариант «{title}» уже использовался (остаток сейчас {current}, а был добавлен {qty}) либо есть в заказах или приходах — удалять его небезопасно.',
+  'undo.blockedVariantGone': 'Отменить нельзя: вариант «{title}» уже удалён.',
+  'undo.okBtn': '↩️ Отменить',
+  'undo.keepBtn': 'Оставить как есть',
+  'undo.kept': 'Хорошо, ничего не отменяю.',
+  'undo.raced': 'Не удалось отменить: данные изменились, пока вы подтверждали. Ничего не изменено — вызовите /undo снова.',
+  'undo.doneOrder': '↩️ Заказ отменён (статус «Отменён»), остаток возвращён на склад:\n{lines}',
+  'undo.doneOrderLine': '• {title} — остаток теперь {current}',
+  'undo.doneAdd': '↩️ Добавление отменено: {title}, остаток теперь {current}.',
+  'undo.doneNewVariant': '↩️ Вариант «{title}» удалён{product}.',
+  'undo.more': '\n\nЕсть ещё действие, которое можно отменить, — /undo.',
+
   // --- ошибки разбора строки заказа
   'parse.noTokens': 'Не указан товар: «{line}»',
   'parse.badQty': 'Количество должно быть больше нуля: «{line}»',
@@ -191,6 +221,7 @@ const uz: Record<MessageKey, string> = {
     "/add_product — omborga tovar qo'shish\n" +
     "/new_order — mijozga buyurtma berish (qoldiq darhol yechiladi)\n" +
     '/history_orders — berilgan buyurtmalar tarixi\n' +
+    '/undo — oxirgi amalingizni bekor qilish (24 soatgacha)\n' +
     '/cancel — joriy amalni bekor qilish',
   welcome: 'Xush kelibsiz, {name}! Kirish 24 soatga amalga oshirildi.\n\n{help}',
   unknownCommand: "Noma'lum buyruq.\n\n{help}",
@@ -331,6 +362,35 @@ const uz: Record<MessageKey, string> = {
   'history.more': '  …yana {n} ta pozitsiya',
   'history.client': 'Mijoz',
   'history.product': 'Tovar',
+
+  // --- /undo
+  'undo.none': "Bekor qilish uchun narsa yo'q: oxirgi 24 soatda bekor qilinadigan amalingiz yo'q.",
+  'undo.confirmOrder':
+    "<b>Berilgan buyurtma bekor qilinsinmi?</b>\nMijoz: {client}\nBerilgan: {when}\n{lines}\n\nBuyurtma «Отменён» holatini oladi, qoldiq omborga qaytadi.{warn}",
+  'undo.orderLine': '• {title} — {qty} dona (hozir {current} → {after} bo\'ladi)',
+  'undo.confirmAdd': "<b>Omborga qo'shish bekor qilinsinmi?</b>\n{title}: +{qty} dona ({when} da qo'shilgan)\nHozir {current} → {after} bo'ladi.{warn}",
+  'undo.confirmNewVariant': "<b>Variant yaratish bekor qilinsinmi?</b>\n{title} — {qty} dona qo'shilgan edi ({when})\nVariant o'chiriladi{product}.",
+  'undo.alsoProduct': " yangi «{name}» tovari bilan birga",
+  'undo.warnStock': "\n⚠️ Amaldan keyin qoldiq o'zgargan ({detail}). Yuqoridagi raqamlarni tekshiring.",
+  'undo.warnStockItem': '{title}: {was} edi, hozir {current}',
+  'undo.warnItemsChanged': "\n⚠️ Buyurtma tarkibi berilgandan keyin vebda o'zgartirilgan — joriy pozitsiyalar ko'rsatildi.",
+  'undo.blockedOrderChanged': "Bekor qilib bo'lmaydi: buyurtma vebda allaqachon o'zgartirilgan (holat: {status}).",
+  'undo.blockedOrderMissing': "Bekor qilib bo'lmaydi: buyurtma topilmadi (vebda o'chirilgan bo'lishi mumkin).",
+  'undo.blockedNoDeduction': "Bekor qilib bo'lmaydi: bu buyurtma bo'yicha qoldiq yechilmagan — qaytaradigan narsa yo'q.",
+  'undo.blockedConsumed':
+    "Bekor qilib bo'lmaydi: «{title}» qo'shilgandan keyin qoldiq {current} gacha kamaydi, {qty} dona qo'shilgan edi — bu donalar allaqachon ombordan chiqib ketgan.",
+  'undo.blockedVariantUsed':
+    "Bekor qilib bo'lmaydi: «{title}» varianti allaqachon ishlatilgan (hozirgi qoldiq {current}, qo'shilgani {qty}) yoki buyurtma/kirimlarda bor — uni o'chirish xavfli.",
+  'undo.blockedVariantGone': "Bekor qilib bo'lmaydi: «{title}» varianti allaqachon o'chirilgan.",
+  'undo.okBtn': '↩️ Bekor qilish',
+  'undo.keepBtn': "Shundayligicha qoldirish",
+  'undo.kept': "Xo'p, hech narsani bekor qilmayman.",
+  'undo.raced': "Bekor qilib bo'lmadi: tasdiqlayotganingizda ma'lumotlar o'zgardi. Hech narsa o'zgarmadi — /undo ni qayta yuboring.",
+  'undo.doneOrder': "↩️ Buyurtma bekor qilindi (holat «Отменён»), qoldiq omborga qaytarildi:\n{lines}",
+  'undo.doneOrderLine': '• {title} — hozirgi qoldiq {current}',
+  'undo.doneAdd': "↩️ Qo'shish bekor qilindi: {title}, hozirgi qoldiq {current}.",
+  'undo.doneNewVariant': "↩️ «{title}» varianti o'chirildi{product}.",
+  'undo.more': "\n\nBekor qilish mumkin bo'lgan yana bir amal bor — /undo.",
 
   // --- buyurtma qatorini tahlil qilish xatolari
   'parse.noTokens': "Tovar ko'rsatilmagan: «{line}»",
