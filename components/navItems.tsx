@@ -71,6 +71,16 @@ export function IconOutgoing({ className }: { className?: string }) {
   );
 }
 
+export function IconScissors({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <circle cx="5.5" cy="6" r="1.8" />
+      <circle cx="5.5" cy="14" r="1.8" />
+      <path d="M16.5 4.5 7 10l9.5 5.5M7 10 3.5 12" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function IconHistory({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -117,6 +127,34 @@ export const NAV_ITEMS: NavItem[] = [
     shortLabel: 'История',
     icon: IconHistory,
     roles: ['ceo', 'kladovshik'],
+  },
+  {
+    href: '/raw/receiving',
+    label: 'Приход',
+    shortLabel: 'Приход',
+    icon: IconReceiving,
+    roles: ['zakroyshik'],
+  },
+  {
+    href: '/raw/stock',
+    label: 'Склад',
+    shortLabel: 'Склад',
+    icon: IconBox,
+    roles: ['zakroyshik'],
+  },
+  {
+    href: '/raw/issue',
+    label: 'Взять для цеха',
+    shortLabel: 'Цех',
+    icon: IconOutgoing,
+    roles: ['zakroyshik'],
+  },
+  {
+    href: '/raw/batch',
+    label: 'Партия',
+    shortLabel: 'Партия',
+    icon: IconScissors,
+    roles: ['zakroyshik'],
   },
   {
     href: '/warehouse/receiving-history',

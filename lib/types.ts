@@ -18,7 +18,7 @@ export const COMPLETION_REASON_LABELS: Record<CompletionReason, string> = {
   no_stock: 'Не было на складе',
 };
 
-export type Role = 'ceo' | 'kladovshik';
+export type Role = 'ceo' | 'kladovshik' | 'zakroyshik';
 
 export interface Profile {
   id: string;
@@ -171,4 +171,74 @@ export const ORDER_STATUSES: { value: OrderStatus; label: string; color: string 
 export const ROLE_LABELS: Record<Role, string> = {
   ceo: 'CEO',
   kladovshik: 'Кладовщик',
+  zakroyshik: 'Закройщик',
+};
+
+// Ряд из raw_material_colors_view — материал+цвет, единица учёта
+// остатка склада сырья (в рулонах). Ширина/вес/поставщик — не здесь,
+// они у конкретной поставки в RawMaterialReceipt.
+export interface RawMaterialColor {
+  id: string;
+  material_id: string;
+  material_name: string;
+  color: string;
+  stock_rolls: number;
+  created_at: string;
+}
+
+// Ряд из raw_material_receipts_view — одна поставка сырья.
+export interface RawMaterialReceipt {
+  id: string;
+  color_id: string;
+  material_name: string;
+  color: string;
+  color_code: string | null;
+  width_cm: number | null;
+  weight_kg: number | null;
+  rolls: number;
+  truck_number: string | null;
+  supplier_invoice_number: string | null;
+  supplier_batch_number: string | null;
+  supplier_name: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+// Ряд из raw_material_issues_view — одна выдача сырья в цех.
+export interface RawMaterialIssue {
+  id: string;
+  color_id: string;
+  material_name: string;
+  color: string;
+  rolls: number;
+  taken_by: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface CuttingBatchSize {
+  size: string;
+  quantity: number;
+}
+
+// Ряд из cutting_batches_view — партия раскроя: результат по размерам
+// одного взятия материала (raw_material_issues), пока без привязки к
+// конкретному товару — её добавит будущая роль "Мастер цеха".
+export interface CuttingBatch {
+  id: string;
+  batch_number: number;
+  status: 'cut';
+  issue_id: string;
+  material_name: string;
+  color: string;
+  rolls_taken: number;
+  taken_by: string;
+  total_quantity: number;
+  sizes: CuttingBatchSize[];
+  created_by: string | null;
+  created_at: string;
+}
+
+export const CUTTING_BATCH_STATUS_LABELS: Record<CuttingBatch['status'], string> = {
+  cut: 'Раскроено',
 };
