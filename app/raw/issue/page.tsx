@@ -1,17 +1,25 @@
 'use client';
 
-import { useEffect, useRef, useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
 import { supabase } from '@/lib/supabase';
 import { RawMaterialColor, RawMaterialIssue } from '@/lib/types';
 import { formatDate } from '@/lib/format';
 import RequireRole from '@/components/RequireRole';
 
-function IssueForm() {
-  const [query, setQuery] = useState('');
-  const [searching, setSearching] = useState(false);
-  const [results, setResults] = useState<RawMaterialColor[]>([]);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+function IconChevronLeft() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4">
+      <path d="M12.5 4.5 7 10l5.5 5.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
+function IssueForm() {
+  const [colors, setColors] = useState<RawMaterialColor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [selectedMaterial, setSelectedMaterial] = useState<string | null>(null);
   const [selected, setSelected] = useState<RawMaterialColor | null>(null);
   const [rolls, setRolls] = useState('');
   const [takenBy, setTakenBy] = useState('');
@@ -20,6 +28,18 @@ function IssueForm() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [recent, setRecent] = useState<RawMaterialIssue[]>([]);
+
+  async function loadColors() {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('raw_material_colors_view')
+      .select('*')
+      .order('material_name')
+      .order('color');
+    if (error) setLoadError(error.message);
+    else setColors((data as unknown as RawMaterialColor[]) ?? []);
+    setLoading(false);
+  }
 
   async function loadRecent() {
     const { data } = await supabase
@@ -31,52 +51,33 @@ function IssueForm() {
   }
 
   useEffect(() => {
+    loadColors();
     loadRecent();
   }, []);
 
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    const q = query.trim();
-    if (q.length < 2) {
-      setResults([]);
-      return;
-    }
-    setSearching(true);
-    debounceRef.current = setTimeout(async () => {
-      const { data, error } = await supabase
-        .from('raw_material_colors_view')
-        .select('*')
-        .ilike('material_name', `%${q}%`)
-        .order('material_name')
-        .order('color')
-        .limit(50);
-      if (!error) setResults((data as unknown as RawMaterialColor[]) ?? []);
-      setSearching(false);
-    }, 300);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query]);
-
-  const groupedResults = Array.from(
-    results.reduce((map, c) => {
+  const groupedMaterials = Array.from(
+    colors.reduce((map, c) => {
       const list = map.get(c.material_name) ?? [];
       list.push(c);
       map.set(c.material_name, list);
       return map;
     }, new Map<string, RawMaterialColor[]>())
-  );
+  ).sort(([a], [b]) => a.localeCompare(b));
+
+  const materialColors = selectedMaterial ? colors.filter((c) => c.material_name === selectedMaterial) : [];
 
   function selectColor(c: RawMaterialColor) {
+    if (c.stock_rolls <= 0) return;
     setSelected(c);
-    setQuery('');
-    setResults([]);
+    setRolls('');
+    setTakenBy('');
     setSuccess(null);
     setError(null);
   }
 
   function resetForm() {
     setSelected(null);
+    setSelectedMaterial(null);
     setRolls('');
     setTakenBy('');
   }
@@ -119,8 +120,11 @@ function IssueForm() {
 
     setSuccess(`Выдано: ${rollsNum} рул. (${selected.material_name}, ${selected.color}) — ${takenBy.trim()}`);
     resetForm();
+    loadColors();
     loadRecent();
   }
+
+  if (loading) return <p className="text-sm text-slate-400">Загрузка…</p>;
 
   return (
     <div className="space-y-6">
@@ -129,12 +133,73 @@ function IssueForm() {
         <p className="mt-1 text-sm text-slate-500">Выдача сырья на раскрой</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">Материал</h2>
+      {loadError && <p className="text-sm text-red-600">{loadError}</p>}
+      {success && <p className="text-sm font-medium text-green-600">{success}</p>}
 
-          {selected ? (
-            <div className="flex items-center justify-between rounded-md border border-slate-300 bg-slate-50 px-3 py-2.5">
+      {!selected && !selectedMaterial && (
+        <div className="space-y-2">
+          {groupedMaterials.length === 0 && <p className="text-sm text-slate-400">На складе пока пусто</p>}
+          {groupedMaterials.map(([name, list]) => {
+            const total = list.reduce((sum, c) => sum + c.stock_rolls, 0);
+            return (
+              <button
+                key={name}
+                type="button"
+                onClick={() => setSelectedMaterial(name)}
+                className={`flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white p-4 text-left ${
+                  total <= 0 ? 'opacity-40' : ''
+                }`}
+              >
+                <div>
+                  <p className="font-medium text-slate-800">{name}</p>
+                  <p className="text-xs text-slate-400">
+                    {list.length} {list.length === 1 ? 'цвет' : 'цветов'}
+                  </p>
+                </div>
+                <span className="text-sm font-medium text-slate-600">{total} рул.</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {!selected && selectedMaterial && (
+        <div className="space-y-4">
+          <button
+            type="button"
+            onClick={() => setSelectedMaterial(null)}
+            className="flex items-center gap-1 text-sm font-medium text-indigo-600"
+          >
+            <IconChevronLeft />
+            Все материалы
+          </button>
+          <h2 className="text-lg font-semibold text-slate-900">{selectedMaterial}</h2>
+          <div className="flex flex-wrap gap-2">
+            {materialColors.map((c) => {
+              const empty = c.stock_rolls <= 0;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  disabled={empty}
+                  onClick={() => selectColor(c)}
+                  className={`rounded-md border px-3 py-2.5 text-left text-sm disabled:opacity-40 ${
+                    empty ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'
+                  }`}
+                >
+                  <span className="block font-medium text-slate-800">{c.color}</span>
+                  <span className="text-xs text-slate-400">Остаток {c.stock_rolls}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {selected && (
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between">
               <div>
                 <p className="text-base font-medium text-slate-800">{selected.material_name}</p>
                 <p className="text-sm text-slate-500">{selected.color}</p>
@@ -142,60 +207,14 @@ function IssueForm() {
               </div>
               <button
                 type="button"
-                onClick={resetForm}
+                onClick={() => setSelected(null)}
                 className="rounded-md px-2 py-1.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
               >
                 Изменить
               </button>
             </div>
-          ) : (
-            <>
-              <input
-                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-                placeholder="Название материала"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
+          </div>
 
-              {searching && <p className="mt-2 text-xs text-slate-400">Поиск…</p>}
-
-              {!searching && query.trim().length >= 2 && groupedResults.length === 0 && (
-                <p className="mt-2 text-xs text-slate-400">Ничего не найдено</p>
-              )}
-
-              {groupedResults.length > 0 && (
-                <div className="mt-3 space-y-3">
-                  {groupedResults.map(([materialName, colorsList]) => (
-                    <div key={materialName}>
-                      <p className="mb-1.5 text-sm font-medium text-slate-700">{materialName}</p>
-                      <div className="flex flex-wrap gap-2">
-                        {colorsList.map((c) => {
-                          const empty = c.stock_rolls <= 0;
-                          return (
-                            <button
-                              key={c.id}
-                              type="button"
-                              disabled={empty}
-                              onClick={() => selectColor(c)}
-                              className={`rounded-md border px-3 py-2.5 text-left text-sm disabled:opacity-40 ${
-                                empty ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'
-                              }`}
-                            >
-                              <span className="block font-medium text-slate-800">{c.color}</span>
-                              <span className="text-xs text-slate-400">Остаток {c.stock_rolls}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {selected && (
           <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-500">
@@ -223,12 +242,9 @@ function IssueForm() {
               />
             </label>
           </div>
-        )}
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        {success && <p className="text-sm font-medium text-green-600">{success}</p>}
+          {error && <p className="text-sm text-red-600">{error}</p>}
 
-        {selected && (
           <button
             type="submit"
             disabled={saving}
@@ -236,8 +252,8 @@ function IssueForm() {
           >
             {saving ? 'Сохранение…' : 'Выдать'}
           </button>
-        )}
-      </form>
+        </form>
+      )}
 
       {recent.length > 0 && (
         <div className="rounded-lg border border-slate-200 bg-white p-4">
