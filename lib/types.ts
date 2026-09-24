@@ -221,9 +221,18 @@ export interface CuttingBatchSize {
   quantity: number;
 }
 
-// Ряд из cutting_batches_view — партия раскроя: результат по размерам
-// одного взятия материала (raw_material_issues), пока без привязки к
-// конкретному товару — её добавит будущая роль "Мастер цеха".
+// Товар внутри партии (cutting_batch_products) с его размерами — с
+// одного раскроя может выйти сразу несколько разных изделий.
+export interface CuttingBatchProduct {
+  product_name: string;
+  total_quantity: number;
+  sizes: CuttingBatchSize[];
+}
+
+// Ряд из cutting_batches_view — партия раскроя: результат одного взятия
+// материала (raw_material_issues) по всем вышедшим из него товарам,
+// пока без привязки к конкретному фасону — её добавит будущая роль
+// "Мастер цеха".
 export interface CuttingBatch {
   id: string;
   batch_number: number;
@@ -234,7 +243,7 @@ export interface CuttingBatch {
   rolls_taken: number;
   taken_by: string;
   total_quantity: number;
-  sizes: CuttingBatchSize[];
+  products: CuttingBatchProduct[];
   created_by: string | null;
   created_at: string;
 }
@@ -242,3 +251,16 @@ export interface CuttingBatch {
 export const CUTTING_BATCH_STATUS_LABELS: Record<CuttingBatch['status'], string> = {
   cut: 'Раскроено',
 };
+
+// Ряд из defect_photos_view — фото брака ткани, найденного во время
+// кроя. Привязка к материалу+цвету необязательна (color_id/material_name
+// /color могут быть null), см. README.
+export interface DefectPhoto {
+  id: string;
+  color_id: string | null;
+  material_name: string | null;
+  color: string | null;
+  storage_path: string;
+  created_by: string | null;
+  created_at: string;
+}

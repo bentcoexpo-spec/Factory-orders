@@ -71,6 +71,16 @@ export function IconOutgoing({ className }: { className?: string }) {
   );
 }
 
+export function IconWarning({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M10 3 2.5 16.5h15L10 3Z" strokeLinejoin="round" />
+      <path d="M10 8.5v3.5" strokeLinecap="round" />
+      <circle cx="10" cy="14.3" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function IconScissors({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -154,6 +164,13 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Партия',
     shortLabel: 'Партия',
     icon: IconScissors,
+    roles: ['zakroyshik'],
+  },
+  {
+    href: '/raw/defects',
+    label: 'Брак',
+    shortLabel: 'Брак',
+    icon: IconWarning,
     roles: ['zakroyshik'],
   },
   {
