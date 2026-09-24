@@ -232,6 +232,13 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['master'],
   },
   {
+    href: '/master/productivity',
+    label: 'Продуктивность',
+    shortLabel: 'Люди',
+    icon: IconChart,
+    roles: ['master'],
+  },
+  {
     href: '/warehouse/receiving-history',
     label: 'История прихода',
     shortLabel: 'Приход-история',
