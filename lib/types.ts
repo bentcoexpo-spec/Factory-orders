@@ -253,8 +253,8 @@ export const CUTTING_BATCH_STATUS_LABELS: Record<CuttingBatch['status'], string>
 };
 
 // Ряд из defect_photos_view — фото брака ткани, найденного во время
-// кроя. Привязка к материалу+цвету необязательна (color_id/material_name
-// /color могут быть null), см. README.
+// кроя. Привязка к материалу+цвету и к партии независимы и обе
+// необязательны (могут быть null по отдельности), см. README.
 export interface DefectPhoto {
   id: string;
   color_id: string | null;
@@ -263,4 +263,6 @@ export interface DefectPhoto {
   storage_path: string;
   created_by: string | null;
   created_at: string;
+  batch_id: string | null;
+  batch_number: number | null;
 }
