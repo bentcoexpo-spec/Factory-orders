@@ -18,7 +18,7 @@ export const COMPLETION_REASON_LABELS: Record<CompletionReason, string> = {
   no_stock: 'Не было на складе',
 };
 
-export type Role = 'ceo' | 'kladovshik' | 'zakroyshik';
+export type Role = 'ceo' | 'kladovshik' | 'zakroyshik' | 'master';
 
 export interface Profile {
   id: string;
@@ -172,6 +172,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   ceo: 'CEO',
   kladovshik: 'Кладовщик',
   zakroyshik: 'Закройщик',
+  master: 'Мастер цеха',
 };
 
 // Ряд из raw_material_colors_view — материал+цвет, единица учёта
@@ -219,6 +220,13 @@ export interface RawMaterialIssue {
 export interface CuttingBatchSize {
   size: string;
   quantity: number;
+  // Подтверждено мастером при приёмке кроя (null — ещё не подтверждено).
+  // Заявленное закройщиком quantity выше не меняется никогда — это два
+  // разных числа специально, чтобы видеть систематические расхождения.
+  confirmed_quantity: number | null;
+  // Сшито готово / брак при отчёте о готовом (null — ещё не сдано).
+  sewn_quantity: number | null;
+  sewn_defect_quantity: number | null;
 }
 
 // Товар внутри партии (cutting_batch_products) с его размерами — с
@@ -229,28 +237,53 @@ export interface CuttingBatchProduct {
   sizes: CuttingBatchSize[];
 }
 
+export type CuttingBatchStatus = 'cut' | 'in_sewing' | 'sewn';
+
 // Ряд из cutting_batches_view — партия раскроя: результат одного взятия
-// материала (raw_material_issues) по всем вышедшим из него товарам,
-// пока без привязки к конкретному фасону — её добавит будущая роль
-// "Мастер цеха".
+// материала (raw_material_issues) по всем вышедшим из него товарам.
+// Статус идёт "cut" (заявлено закройщиком) -> "in_sewing" (мастер принял
+// крой) -> "sewn" (мастер сдал готовое, ждёт склад). Пока без привязки к
+// конкретному фасону из каталога — её добавит будущая роль "Мастер цеха"
+// (эта роль уже есть, но каталог фасонов — нет).
 export interface CuttingBatch {
   id: string;
   batch_number: number;
-  status: 'cut';
+  status: CuttingBatchStatus;
   issue_id: string;
   material_name: string;
   color: string;
+  color_id: string;
   rolls_taken: number;
   taken_by: string;
   total_quantity: number;
   products: CuttingBatchProduct[];
   created_by: string | null;
   created_at: string;
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  sewn_by: string | null;
+  sewn_at: string | null;
 }
 
-export const CUTTING_BATCH_STATUS_LABELS: Record<CuttingBatch['status'], string> = {
+export const CUTTING_BATCH_STATUS_LABELS: Record<CuttingBatchStatus, string> = {
   cut: 'Раскроено',
+  in_sewing: 'В пошиве',
+  sewn: 'Пошито, ожидает склад',
 };
+
+// Ряд из cutting_batch_items_view — одна размерная строка партии.
+// batch_product_id/size/quantity — заявка закройщика (не редактируется
+// мастером, см. 022_cutting_batch_master_workflow.sql); остальное
+// заполняет мастер по ходу приёмки/отчёта.
+export interface CuttingBatchItemRow {
+  id: string;
+  batch_product_id: string;
+  size: string;
+  quantity: number;
+  confirmed_quantity: number | null;
+  sewn_quantity: number | null;
+  sewn_defect_quantity: number | null;
+}
 
 // Ряд из defect_photos_view — фото брака ткани, найденного во время
 // кроя. Привязка к материалу+цвету и к партии независимы и обе
@@ -265,4 +298,51 @@ export interface DefectPhoto {
   created_at: string;
   batch_id: string | null;
   batch_number: number | null;
+}
+
+// Сотрудник цеха (справочник для табеля и сдельной оплаты).
+export interface Employee {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+// Ряд из attendance_view — отметка явки. Строка существует = сотрудник
+// пришёл в этот день; "не пришёл" — просто отсутствие строки, а не
+// отдельное значение поля.
+export interface AttendanceRecord {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  date: string;
+  marked_by: string | null;
+  created_at: string;
+}
+
+// Тип операции/станции (например "Оверлок") со ставкой за штуку —
+// мастер заводит и правит ставки прямо в интерфейсе.
+export interface OperationType {
+  id: string;
+  name: string;
+  rate_per_piece: number;
+  created_at: string;
+}
+
+// Ряд из work_records_view — одна запись о выполненной работе. Один
+// сотрудник может иметь за день сколько угодно записей с разными
+// операциями, поэтому это журнал, а не "операция дня".
+export interface WorkRecord {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  operation_type_id: string;
+  operation_name: string;
+  rate_per_piece: number;
+  quantity: number;
+  line_total: number;
+  date: string;
+  batch_id: string | null;
+  batch_number: number | null;
+  created_by: string | null;
+  created_at: string;
 }

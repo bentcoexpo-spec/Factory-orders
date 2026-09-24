@@ -91,6 +91,36 @@ export function IconScissors({ className }: { className?: string }) {
   );
 }
 
+export function IconCheckCircle({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <circle cx="10" cy="10" r="7" />
+      <path d="M6.8 10.2 9 12.3l4.2-4.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function IconCalendar({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="3" y="4.5" width="14" height="12" rx="1.5" />
+      <path d="M3 8h14M7 3v3M13 3v3" strokeLinecap="round" />
+      <path d="M6.5 11.3 8 12.7l2.5-2.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function IconCoins({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <ellipse cx="7.5" cy="6" rx="4.5" ry="2.3" />
+      <path d="M3 6v4c0 1.27 2.01 2.3 4.5 2.3S12 11.27 12 10V6" strokeLinecap="round" />
+      <path d="M3 10v4c0 1.27 2.01 2.3 4.5 2.3.62 0 1.2-.06 1.74-.18" strokeLinecap="round" />
+      <path d="M12 8.3c2.2.18 3.9 1.13 3.9 2.3s-1.7 2.12-3.9 2.3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function IconHistory({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -172,6 +202,34 @@ export const NAV_ITEMS: NavItem[] = [
     shortLabel: 'Брак',
     icon: IconWarning,
     roles: ['zakroyshik'],
+  },
+  {
+    href: '/master/acceptance',
+    label: 'Приёмка кроя',
+    shortLabel: 'Приёмка',
+    icon: IconScissors,
+    roles: ['master'],
+  },
+  {
+    href: '/master/sewn',
+    label: 'Отчёт о готовом',
+    shortLabel: 'Готово',
+    icon: IconCheckCircle,
+    roles: ['master'],
+  },
+  {
+    href: '/master/timesheet',
+    label: 'Табель',
+    shortLabel: 'Табель',
+    icon: IconCalendar,
+    roles: ['master'],
+  },
+  {
+    href: '/master/piecework',
+    label: 'Сделка',
+    shortLabel: 'Сделка',
+    icon: IconCoins,
+    roles: ['master'],
   },
   {
     href: '/warehouse/receiving-history',
