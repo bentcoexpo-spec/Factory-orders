@@ -3,15 +3,11 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { CuttingBatch, Employee, OperationType, WorkRecord } from '@/lib/types';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
 import RequireRole from '@/components/RequireRole';
 
 function todayDate() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function formatSum(value: number) {
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value);
 }
 
 function BatchPicker({
@@ -244,7 +240,7 @@ function PieceworkContent() {
               <option value="">Выберите…</option>
               {operationTypes.map((o) => (
                 <option key={o.id} value={o.id}>
-                  {o.name} ({o.rate_per_piece} ₽/шт)
+                  {o.name} ({formatMoney(o.rate_per_piece)}/шт)
                 </option>
               ))}
             </select>
@@ -318,10 +314,11 @@ function PieceworkContent() {
                     {r.employee_name} <span className="text-slate-400">· {r.operation_name}</span>
                   </p>
                   <p className="text-xs text-slate-400">
-                    {r.quantity} шт × {r.rate_per_piece} ₽{r.batch_number != null ? ` · Партия №${r.batch_number}` : ''}
+                    {r.quantity} шт × {formatMoney(r.rate_per_piece)}
+                    {r.batch_number != null ? ` · Партия №${r.batch_number}` : ''}
                   </p>
                 </div>
-                <span className="font-medium text-green-600">{formatSum(r.line_total)} ₽</span>
+                <span className="font-medium text-green-600">{formatMoney(r.line_total)}</span>
               </div>
             ))}
           </div>
@@ -333,7 +330,7 @@ function PieceworkContent() {
                 {dailyTotals.map(([name, total]) => (
                   <div key={name} className="flex items-center justify-between text-sm">
                     <span className="text-slate-700">{name}</span>
-                    <span className="font-medium text-slate-900">{formatSum(total)} ₽</span>
+                    <span className="font-medium text-slate-900">{formatMoney(total)}</span>
                   </div>
                 ))}
               </div>
@@ -359,7 +356,7 @@ function PieceworkContent() {
                   onChange={(e) => setRateDrafts((prev) => ({ ...prev, [op.id]: e.target.value }))}
                   onBlur={() => saveRate(op.id)}
                 />
-                <span className="text-xs text-slate-400">₽/шт</span>
+                <span className="text-xs text-slate-400">сум/шт</span>
               </div>
             </div>
           ))}
@@ -378,7 +375,7 @@ function PieceworkContent() {
             step="0.1"
             inputMode="decimal"
             className="w-24 shrink-0 rounded-md border border-slate-300 px-3 py-2.5 text-base"
-            placeholder="₽/шт"
+            placeholder="сум/шт"
             value={newOperationRate}
             onChange={(e) => setNewOperationRate(e.target.value)}
           />
