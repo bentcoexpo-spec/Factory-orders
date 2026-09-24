@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { CuttingBatch, CuttingBatchItemRow } from '@/lib/types';
 import { formatDate } from '@/lib/format';
+import { friendlyBatchStatusError } from '@/lib/errors';
 import RequireRole from '@/components/RequireRole';
 
 interface ProductGroup {
@@ -107,7 +108,7 @@ function AcceptanceContent() {
         .from('cutting_batches')
         .update({ status: 'in_sewing' })
         .eq('id', selectedBatch.id);
-      if (statusError) throw new Error(statusError.message);
+      if (statusError) throw new Error(friendlyBatchStatusError(statusError.message));
 
       setSuccess(`Партия №${selectedBatch.batch_number} принята в пошив`);
       backToPending();

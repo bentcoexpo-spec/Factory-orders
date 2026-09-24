@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { CuttingBatch, CuttingBatchItemRow, DefectPhoto } from '@/lib/types';
 import { formatDate } from '@/lib/format';
+import { friendlyBatchStatusError } from '@/lib/errors';
 import RequireRole from '@/components/RequireRole';
 
 const BUCKET = 'defect-photos';
@@ -39,6 +40,8 @@ function SewnReportContent() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
+  const [overageWarning, setOverageWarning] = useState<string | null>(null);
+  const [overageConfirmed, setOverageConfirmed] = useState(false);
 
   const [photos, setPhotos] = useState<DefectPhoto[]>([]);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
@@ -87,6 +90,8 @@ function SewnReportContent() {
     setSelectedBatch(batch);
     setSuccess(null);
     setError(null);
+    setOverageWarning(null);
+    setOverageConfirmed(false);
     setDetailLoading(true);
 
     const { data: products } = await supabase
@@ -181,6 +186,28 @@ function SewnReportContent() {
       }
     }
 
+    // Мягкое предупреждение, не блокировка: недостача — обычное дело
+    // (пересчёт задним числом), а вот заметное превышение подтверждённого
+    // на приёмке стоит переспросить перед сохранением.
+    if (!overageConfirmed) {
+      const overItems = allItems.filter((item) => {
+        const d = draft[item.id];
+        const confirmed = item.confirmed_quantity ?? item.quantity;
+        return Number(d.sewn) + Number(d.defect) > confirmed;
+      });
+      if (overItems.length > 0) {
+        setOverageWarning(
+          `Сдано больше, чем подтверждено на приёмке, у размеров: ${overItems
+            .map((i) => i.size)
+            .join(', ')}. Нажмите «Сдать партию» ещё раз, чтобы сохранить как есть.`
+        );
+        setOverageConfirmed(true);
+        return;
+      }
+    }
+    setOverageWarning(null);
+    setOverageConfirmed(false);
+
     setSaving(true);
     try {
       for (const item of allItems) {
@@ -196,7 +223,7 @@ function SewnReportContent() {
         .from('cutting_batches')
         .update({ status: 'sewn' })
         .eq('id', selectedBatch.id);
-      if (statusError) throw new Error(statusError.message);
+      if (statusError) throw new Error(friendlyBatchStatusError(statusError.message));
 
       setSuccess(`Партия №${selectedBatch.batch_number} сдана: ожидает склад`);
       backToPending();
@@ -253,9 +280,11 @@ function SewnReportContent() {
                         inputMode="numeric"
                         className="w-20 rounded-md border border-slate-300 px-2 py-2 text-base"
                         value={draft[item.id]?.sewn ?? ''}
-                        onChange={(e) =>
-                          setDraft((prev) => ({ ...prev, [item.id]: { ...prev[item.id], sewn: e.target.value } }))
-                        }
+                        onChange={(e) => {
+                          setDraft((prev) => ({ ...prev, [item.id]: { ...prev[item.id], sewn: e.target.value } }));
+                          setOverageConfirmed(false);
+                          setOverageWarning(null);
+                        }}
                       />
                     </label>
                     <label className="ml-auto flex items-center gap-1 text-xs text-slate-500">
@@ -267,9 +296,11 @@ function SewnReportContent() {
                         inputMode="numeric"
                         className="w-20 rounded-md border border-red-200 px-2 py-2 text-base"
                         value={draft[item.id]?.defect ?? ''}
-                        onChange={(e) =>
-                          setDraft((prev) => ({ ...prev, [item.id]: { ...prev[item.id], defect: e.target.value } }))
-                        }
+                        onChange={(e) => {
+                          setDraft((prev) => ({ ...prev, [item.id]: { ...prev[item.id], defect: e.target.value } }));
+                          setOverageConfirmed(false);
+                          setOverageWarning(null);
+                        }}
                       />
                     </label>
                   </div>
@@ -316,6 +347,7 @@ function SewnReportContent() {
           )}
         </div>
 
+        {overageWarning && <p className="text-sm font-medium text-amber-600">{overageWarning}</p>}
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <button
@@ -324,7 +356,7 @@ function SewnReportContent() {
           disabled={saving || detailLoading}
           className="w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
         >
-          {saving ? 'Сохранение…' : 'Сдать партию'}
+          {saving ? 'Сохранение…' : overageWarning ? 'Сдать партию всё равно' : 'Сдать партию'}
         </button>
       </div>
     );

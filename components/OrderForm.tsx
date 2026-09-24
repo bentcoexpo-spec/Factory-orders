@@ -195,31 +195,30 @@ export default function OrderForm({
     }
 
     setSaving(true);
-    const { data: order, error: orderError } = await supabase
-      .from('orders_view')
-      .insert({ client_id: client.id, status: 'new', comment: comment.trim() || null })
-      .select()
-      .single();
+    // Заказ + все позиции создаются одним атомарным вызовом (RPC
+    // create_order) — либо всё, либо ничего. Раньше это были два
+    // отдельных запроса с клиента, и сбой между ними мог оставить в базе
+    // заказ на ноль позиций — причём кладовщик не может даже сам его
+    // удалить (это умеет только CEO).
+    const payload = items.map((it) =>
+      isCeo
+        ? { variant_id: it.variant.id, quantity: it.quantity, price: it.price }
+        : { variant_id: it.variant.id, quantity: it.quantity }
+    );
 
-    if (orderError || !order) {
+    const { data: orderId, error: orderError } = await supabase.rpc('create_order', {
+      p_client_id: client.id,
+      p_comment: comment.trim() || null,
+      p_items: payload,
+    });
+
+    if (orderError || !orderId) {
       setSaving(false);
       setError(orderError?.message ?? 'Не удалось создать заказ');
       return;
     }
 
-    const payload = items.map((it) =>
-      isCeo
-        ? { order_id: order.id, variant_id: it.variant.id, quantity: it.quantity, price: it.price }
-        : { order_id: order.id, variant_id: it.variant.id, quantity: it.quantity }
-    );
-
-    const { error: itemsError } = await supabase.from('order_items_view').insert(payload);
-
-    if (itemsError) {
-      setSaving(false);
-      setError(itemsError.message);
-      return;
-    }
+    const order = { id: orderId as string };
 
     const finalStatus: OrderStatus | undefined = showPickupToggle && immediatePickup ? 'issued' : undefined;
 

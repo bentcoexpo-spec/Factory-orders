@@ -60,9 +60,14 @@ function TimesheetContent() {
     } else {
       const { error } = await supabase.from('attendance').insert({ employee_id: employeeId, date });
       if (error) {
-        setError(error.message);
-        setTogglingId(null);
-        return;
+        // Гонка (например, открыта ещё одна вкладка) — явка уже отмечена
+        // кем-то только что, просто досинхронизируем состояние без
+        // тревожной ошибки.
+        if (error.code !== '23505') {
+          setError(error.message);
+          setTogglingId(null);
+          return;
+        }
       }
       setPresentIds((prev) => new Set(prev).add(employeeId));
     }

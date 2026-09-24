@@ -147,29 +147,21 @@ function BatchForm() {
 
     setSaving(true);
     try {
-      const { data: batch, error: batchError } = await supabase
-        .from('cutting_batches')
-        .insert({ issue_id: selectedIssue.id })
-        .select('id, batch_number')
-        .single();
-      if (batchError || !batch) throw new Error(batchError?.message ?? 'Не удалось создать партию');
+      // Партия + все товары + все размеры создаются одним атомарным вызовом
+      // (RPC create_cutting_batch) — либо всё, либо ничего. Раньше это были
+      // отдельные запросы с клиента, и сбой посреди них мог оставить
+      // партию-сироту без товаров, которую нельзя было отчитать повторно.
+      const { data, error: batchError } = await supabase.rpc('create_cutting_batch', {
+        p_issue_id: selectedIssue.id,
+        p_products: products.map((p) => ({
+          product_name: p.name,
+          sizes: p.rows.map((r) => ({ size: r.size, quantity: r.quantity })),
+        })),
+      });
+      if (batchError || !data?.[0]) throw new Error(batchError?.message ?? 'Не удалось создать партию');
 
-      let totalQuantity = 0;
-      for (const p of products) {
-        const { data: productRow, error: productError } = await supabase
-          .from('cutting_batch_products')
-          .insert({ batch_id: batch.id, product_name: p.name })
-          .select('id')
-          .single();
-        if (productError || !productRow) throw new Error(productError?.message ?? 'Не удалось сохранить товар');
-
-        const { error: itemsError } = await supabase
-          .from('cutting_batch_items')
-          .insert(p.rows.map((r) => ({ batch_product_id: productRow.id, size: r.size, quantity: r.quantity })));
-        if (itemsError) throw new Error(itemsError.message);
-
-        totalQuantity += p.rows.reduce((sum, r) => sum + r.quantity, 0);
-      }
+      const batch = { batch_number: data[0].out_batch_number };
+      const totalQuantity = products.reduce((sum, p) => sum + p.rows.reduce((s, r) => s + r.quantity, 0), 0);
 
       setSuccess(`Партия №${batch.batch_number} создана: ${products.length} тов., ${totalQuantity} дет.`);
       backToPending();

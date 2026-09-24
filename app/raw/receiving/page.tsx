@@ -11,6 +11,14 @@ interface SelectedMaterial {
   name: string;
 }
 
+// `ilike` трактует "%"/"_" как шаблон, а не буквальный символ — а названия
+// материалов вполне реально их содержат (например "30/1-PENYE-SUPREM 8%
+// LYC"). Экранируем перед точным поиском при восстановлении после гонки
+// двух одновременных вставок одного нового названия.
+function escapeIlike(value: string) {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
 function ReceivingForm() {
   const [materialQuery, setMaterialQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -112,7 +120,7 @@ function ReceivingForm() {
         const { data: existing, error: findError } = await supabase
           .from('raw_materials')
           .select('id')
-          .ilike('name', name)
+          .ilike('name', escapeIlike(name))
           .single();
         if (findError) throw findError;
         return existing.id;
@@ -137,7 +145,7 @@ function ReceivingForm() {
           .from('raw_material_colors')
           .select('id')
           .eq('material_id', materialId)
-          .ilike('color', trimmed)
+          .ilike('color', escapeIlike(trimmed))
           .single();
         if (findError) throw findError;
         return existing.id;
