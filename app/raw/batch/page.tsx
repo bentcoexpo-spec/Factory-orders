@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { CuttingBatch, RawMaterialIssue } from '@/lib/types';
+import { CuttingBatch, RawMaterialIssue, SHOP_LABELS, Shop } from '@/lib/types';
 import { formatDate } from '@/lib/format';
 import RequireRole from '@/components/RequireRole';
+
+const SHOPS: Shop[] = ['factory', 'workshop'];
 
 interface SizeRow {
   size: string;
@@ -26,6 +28,7 @@ function BatchForm() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [selectedIssue, setSelectedIssue] = useState<RawMaterialIssue | null>(null);
+  const [shop, setShop] = useState<Shop | null>(null);
   const [products, setProducts] = useState<DraftProduct[]>([]);
 
   const [productName, setProductName] = useState('');
@@ -72,6 +75,7 @@ function BatchForm() {
 
   function selectIssue(issue: RawMaterialIssue) {
     setSelectedIssue(issue);
+    setShop(null);
     setProducts([]);
     setProductName('');
     setRows(emptyRows());
@@ -81,6 +85,7 @@ function BatchForm() {
 
   function backToPending() {
     setSelectedIssue(null);
+    setShop(null);
     setProducts([]);
     setProductName('');
     setRows(emptyRows());
@@ -140,6 +145,10 @@ function BatchForm() {
     setSuccess(null);
 
     if (!selectedIssue) return;
+    if (!shop) {
+      setError('Укажите, в какой цех идёт партия');
+      return;
+    }
     if (products.length === 0) {
       setError('Добавьте хотя бы один товар в партию');
       return;
@@ -157,6 +166,7 @@ function BatchForm() {
           product_name: p.name,
           sizes: p.rows.map((r) => ({ size: r.size, quantity: r.quantity })),
         })),
+        p_shop: shop,
       });
       if (batchError || !data?.[0]) throw new Error(batchError?.message ?? 'Не удалось создать партию');
 
@@ -236,6 +246,26 @@ function BatchForm() {
               >
                 Назад
               </button>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <h2 className="mb-3 text-sm font-semibold text-slate-700">В какой цех идёт партия на пошив?</h2>
+            <div className="flex gap-2">
+              {SHOPS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setShop(s)}
+                  className={`flex-1 rounded-md border px-4 py-2.5 text-sm font-medium ${
+                    shop === s
+                      ? 'border-indigo-600 bg-indigo-600 text-white'
+                      : 'border-slate-300 bg-white text-slate-600 active:bg-slate-50'
+                  }`}
+                >
+                  {SHOP_LABELS[s]}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -335,7 +365,7 @@ function BatchForm() {
             <button
               type="button"
               onClick={handleSaveBatch}
-              disabled={saving}
+              disabled={saving || !shop}
               className="w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
             >
               {saving ? 'Сохранение…' : 'Сохранить партию'}
@@ -360,7 +390,9 @@ function BatchForm() {
                   </p>
                   <span className="font-medium text-slate-600">{b.total_quantity} дет.</span>
                 </div>
-                <p className="text-xs text-slate-400">{formatDate(b.created_at)}</p>
+                <p className="text-xs text-slate-400">
+                  {formatDate(b.created_at)} · {SHOP_LABELS[b.shop]}
+                </p>
                 <div className="mt-1 space-y-0.5">
                   {b.products.map((p, i) => (
                     <p key={i} className="text-xs text-slate-500">

@@ -26,6 +26,16 @@ export interface Profile {
   role: Role;
 }
 
+// Цех — "Фабрика" и "Цех" физически разные площадки со своими
+// сотрудниками/табелем/сделкой/партиями. NULL у мастера в профиле значит
+// "ещё не выбрал", тогда интерфейс показывает экран выбора.
+export type Shop = 'factory' | 'workshop';
+
+export const SHOP_LABELS: Record<Shop, string> = {
+  factory: 'Фабрика',
+  workshop: 'Цех',
+};
+
 export interface Client {
   id: string;
   name: string;
@@ -263,6 +273,7 @@ export interface CuttingBatch {
   confirmed_at: string | null;
   sewn_by: string | null;
   sewn_at: string | null;
+  shop: Shop;
 }
 
 export const CUTTING_BATCH_STATUS_LABELS: Record<CuttingBatchStatus, string> = {
@@ -304,10 +315,13 @@ export interface DefectPhoto {
   batch_number: number | null;
 }
 
-// Сотрудник цеха (справочник для табеля и сдельной оплаты).
+// Сотрудник цеха (справочник для табеля и сдельной оплаты). Привязан к
+// конкретному цеху — RLS уже отдаёт мастеру только сотрудников его
+// текущего цеха, поле нужно в основном для инсерта нового сотрудника.
 export interface Employee {
   id: string;
   name: string;
+  shop: Shop;
   created_at: string;
 }
 

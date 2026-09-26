@@ -4,12 +4,14 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Employee } from '@/lib/types';
 import RequireRole from '@/components/RequireRole';
+import { useRole } from '@/components/RoleProvider';
 
 function todayDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
 function TimesheetContent() {
+  const { shop } = useRole();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [date, setDate] = useState(todayDate());
   const [presentIds, setPresentIds] = useState<Set<string>>(new Set());
@@ -101,10 +103,10 @@ function TimesheetContent() {
 
   async function addEmployee() {
     const name = newName.trim();
-    if (!name) return;
+    if (!name || !shop) return;
     setAddingEmployee(true);
     setError(null);
-    const { data, error } = await supabase.from('employees').insert({ name }).select().single();
+    const { data, error } = await supabase.from('employees').insert({ name, shop }).select().single();
     setAddingEmployee(false);
     if (error) {
       setError(error.message);
@@ -186,7 +188,7 @@ function TimesheetContent() {
           <button
             type="button"
             onClick={addEmployee}
-            disabled={addingEmployee || !newName.trim()}
+            disabled={addingEmployee || !newName.trim() || !shop}
             className="shrink-0 rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
           >
             {addingEmployee ? 'Добавление…' : 'Добавить'}

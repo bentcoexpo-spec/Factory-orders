@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { CUTTING_BATCH_STATUS_LABELS, CuttingBatch } from '@/lib/types';
+import { CUTTING_BATCH_STATUS_LABELS, CuttingBatch, SHOP_LABELS } from '@/lib/types';
 import { formatDate } from '@/lib/format';
 import RequireRole from '@/components/RequireRole';
 
@@ -50,7 +50,7 @@ function CuttingLogContent() {
                   </span>
                 </p>
                 <p className="text-xs text-slate-400">
-                  {formatDate(b.created_at)} · взял: {b.taken_by} · {b.rolls_taken} рул.
+                  {formatDate(b.created_at)} · взял: {b.taken_by} · {b.rolls_taken} рул. · {SHOP_LABELS[b.shop]}
                 </p>
               </div>
               <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
