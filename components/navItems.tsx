@@ -246,6 +246,14 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['ceo'],
     hideOnMobileNav: true,
   },
+  {
+    href: '/cutting-log',
+    label: 'Действия закройщика',
+    shortLabel: 'Раскрой',
+    icon: IconScissors,
+    roles: ['ceo'],
+    hideOnMobileNav: true,
+  },
   { href: '/analytics', label: 'Аналитика', shortLabel: 'Аналитика', icon: IconChart, roles: ['ceo'] },
 ];
 

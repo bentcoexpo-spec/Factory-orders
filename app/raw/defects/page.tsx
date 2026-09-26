@@ -25,6 +25,24 @@ function IconCamera({ className }: { className?: string }) {
   );
 }
 
+function IconVideo({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="2.5" y="5.5" width="10" height="9" rx="1.2" />
+      <path d="M12.5 8.7 17 6.3v7.4l-4.5-2.4" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconDownload({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M10 3v9M6.3 8.5 10 12l3.7-3.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.5 14v1.5a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V14" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 interface MaterialPickerProps {
   colors: RawMaterialColor[];
   onPick: (c: RawMaterialColor) => void;
@@ -187,6 +205,21 @@ function ReceiptDetailCard({ r }: { r: RawMaterialReceipt }) {
   );
 }
 
+async function downloadFile(path: string, onError: (message: string) => void) {
+  const filename = path.split('/').pop() || 'file';
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600, { download: filename });
+  if (error || !data?.signedUrl) {
+    onError(error?.message ?? 'Не удалось получить ссылку на файл');
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = data.signedUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 function DefectsContent() {
   const [colors, setColors] = useState<RawMaterialColor[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -196,10 +229,14 @@ function DefectsContent() {
   const [batchPickerOpen, setBatchPickerOpen] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState<CuttingBatch | null>(null);
 
+  const [weightKg, setWeightKg] = useState('');
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
+  const [pendingVideo, setPendingVideo] = useState<File | null>(null);
+
   const [photos, setPhotos] = useState<DefectPhoto[]>([]);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -208,7 +245,8 @@ function DefectsContent() {
   const [detailBatch, setDetailBatch] = useState<CuttingBatch | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   async function loadColors() {
     const { data } = await supabase.from('raw_material_colors_view').select('*').order('material_name').order('color');
@@ -237,13 +275,12 @@ function DefectsContent() {
     }
     const rows = (data as unknown as DefectPhoto[]) ?? [];
     setPhotos(rows);
-    if (rows.length > 0) {
-      const { data: signed } = await supabase.storage
-        .from(BUCKET)
-        .createSignedUrls(rows.map((r) => r.storage_path), 3600);
+    const paths = rows.flatMap((r) => [r.photo_path, r.video_path].filter((p): p is string => !!p));
+    if (paths.length > 0) {
+      const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrls(paths, 3600);
       const map: Record<string, string> = {};
       (signed ?? []).forEach((s, i) => {
-        if (s.signedUrl) map[rows[i].storage_path] = s.signedUrl;
+        if (s.signedUrl) map[paths[i]] = s.signedUrl;
       });
       setSignedUrls(map);
     }
@@ -281,50 +318,67 @@ function DefectsContent() {
     });
   }, [detailPhoto]);
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
+  function resetCaptureForm() {
+    setSelectedColor(null);
+    setSelectedBatch(null);
+    setWeightKg('');
+    setPendingPhoto(null);
+    setPendingVideo(null);
+  }
 
-    setUploading(true);
-    setError(null);
-    const ext = file.name.split('.').pop() || 'jpg';
+  async function uploadOne(file: File): Promise<string> {
+    const ext = file.name.split('.').pop() || (file.type.startsWith('video') ? 'mp4' : 'jpg');
     const path = `${crypto.randomUUID()}.${ext}`;
-
     const { error: uploadError } = await supabase.storage
       .from(BUCKET)
-      .upload(path, file, { contentType: file.type || 'image/jpeg' });
-    if (uploadError) {
-      setUploading(false);
-      setError(uploadError.message);
-      return;
+      .upload(path, file, { contentType: file.type || 'application/octet-stream' });
+    if (uploadError) throw new Error(uploadError.message);
+    return path;
+  }
+
+  async function handleSaveRecord() {
+    if (!pendingPhoto && !pendingVideo) return;
+    setError(null);
+    setSaving(true);
+
+    const uploadedPaths: string[] = [];
+    try {
+      const photoPath = pendingPhoto ? await uploadOne(pendingPhoto) : null;
+      if (photoPath) uploadedPaths.push(photoPath);
+      const videoPath = pendingVideo ? await uploadOne(pendingVideo) : null;
+      if (videoPath) uploadedPaths.push(videoPath);
+
+      const { error: insertError } = await supabase.from('defect_photos').insert({
+        photo_path: photoPath,
+        video_path: videoPath,
+        weight_kg: weightKg.trim() ? Number(weightKg) : null,
+        color_id: selectedColor?.id ?? null,
+        batch_id: selectedBatch?.id ?? null,
+      });
+      if (insertError) throw new Error(insertError.message);
+
+      resetCaptureForm();
+      loadPhotos();
+    } catch (err) {
+      if (uploadedPaths.length > 0) await supabase.storage.from(BUCKET).remove(uploadedPaths);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
     }
-
-    const { error: insertError } = await supabase.from('defect_photos').insert({
-      storage_path: path,
-      color_id: selectedColor?.id ?? null,
-      batch_id: selectedBatch?.id ?? null,
-    });
-    setUploading(false);
-
-    if (insertError) {
-      await supabase.storage.from(BUCKET).remove([path]);
-      setError(insertError.message);
-      return;
-    }
-
-    loadPhotos();
   }
 
   async function handleDelete(photo: DefectPhoto) {
     setError(null);
     setDeletingId(photo.id);
 
-    const { error: removeError } = await supabase.storage.from(BUCKET).remove([photo.storage_path]);
-    if (removeError) {
-      setDeletingId(null);
-      setError(removeError.message);
-      return;
+    const pathsToRemove = [photo.photo_path, photo.video_path].filter((p): p is string => !!p);
+    if (pathsToRemove.length > 0) {
+      const { error: removeError } = await supabase.storage.from(BUCKET).remove(pathsToRemove);
+      if (removeError) {
+        setDeletingId(null);
+        setError(removeError.message);
+        return;
+      }
     }
 
     const { error: deleteError } = await supabase.from('defect_photos').delete().eq('id', photo.id);
@@ -348,19 +402,50 @@ function DefectsContent() {
           className="flex items-center gap-1 text-sm font-medium text-indigo-600"
         >
           <IconChevronLeft />
-          Все фото
+          Все записи
         </button>
 
-        {signedUrls[detailPhoto.storage_path] && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={signedUrls[detailPhoto.storage_path]}
-            alt="Фото брака"
-            className="w-full rounded-lg border border-slate-200 object-contain"
-          />
+        {detailPhoto.photo_path && signedUrls[detailPhoto.photo_path] && (
+          <div className="space-y-1.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={signedUrls[detailPhoto.photo_path]}
+              alt="Фото брака"
+              className="w-full rounded-lg border border-slate-200 object-contain"
+            />
+            <button
+              type="button"
+              onClick={() => downloadFile(detailPhoto.photo_path!, setError)}
+              className="flex items-center gap-1 text-sm font-medium text-indigo-600"
+            >
+              <IconDownload className="h-4 w-4" />
+              Скачать фото
+            </button>
+          </div>
         )}
 
-        <p className="text-sm text-slate-500">{formatDate(detailPhoto.created_at)}</p>
+        {detailPhoto.video_path && signedUrls[detailPhoto.video_path] && (
+          <div className="space-y-1.5">
+            <video
+              src={signedUrls[detailPhoto.video_path]}
+              controls
+              className="w-full rounded-lg border border-slate-200"
+            />
+            <button
+              type="button"
+              onClick={() => downloadFile(detailPhoto.video_path!, setError)}
+              className="flex items-center gap-1 text-sm font-medium text-indigo-600"
+            >
+              <IconDownload className="h-4 w-4" />
+              Скачать видео
+            </button>
+          </div>
+        )}
+
+        <p className="text-sm text-slate-500">
+          {formatDate(detailPhoto.created_at)}
+          {detailPhoto.weight_kg != null && ` · брак: ${detailPhoto.weight_kg} кг`}
+        </p>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
@@ -419,7 +504,7 @@ function DefectsContent() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Брак</h1>
-        <p className="mt-1 text-sm text-slate-500">Фотофиксация дефектов ткани</p>
+        <p className="mt-1 text-sm text-slate-500">Фото- и видеофиксация дефектов ткани</p>
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-4">
@@ -492,29 +577,100 @@ function DefectsContent() {
           </button>
         )}
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handleFileChange}
-          className="hidden"
-        />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
-        >
-          <IconCamera className="h-5 w-5" />
-          {uploading ? 'Загрузка…' : 'Сфотографировать брак'}
-        </button>
+        <label className="mt-4 block">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Сколько кг брака (необязательно)</span>
+          <input
+            type="number"
+            min={0}
+            step="0.1"
+            inputMode="decimal"
+            className="w-32 rounded-md border border-slate-300 px-3 py-2.5 text-base"
+            value={weightKg}
+            onChange={(e) => setWeightKg(e.target.value)}
+          />
+        </label>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null;
+              e.target.value = '';
+              if (file) setPendingPhoto(file);
+            }}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => photoInputRef.current?.click()}
+            className="flex items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600 active:bg-slate-50"
+          >
+            <IconCamera className="h-4 w-4" />
+            {pendingPhoto ? 'Переснять фото' : 'Сфотографировать брак'}
+          </button>
+
+          <input
+            ref={videoInputRef}
+            type="file"
+            accept="video/*"
+            capture="environment"
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null;
+              e.target.value = '';
+              if (file) setPendingVideo(file);
+            }}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => videoInputRef.current?.click()}
+            className="flex items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600 active:bg-slate-50"
+          >
+            <IconVideo className="h-4 w-4" />
+            {pendingVideo ? 'Переснять видео' : 'Записать видео брака'}
+          </button>
+        </div>
+
+        {(pendingPhoto || pendingVideo) && (
+          <div className="mt-3 space-y-1.5 text-sm text-slate-600">
+            {pendingPhoto && (
+              <p className="flex items-center justify-between">
+                <span>📷 {pendingPhoto.name}</span>
+                <button type="button" onClick={() => setPendingPhoto(null)} className="text-red-600">
+                  Убрать
+                </button>
+              </p>
+            )}
+            {pendingVideo && (
+              <p className="flex items-center justify-between">
+                <span>🎥 {pendingVideo.name}</span>
+                <button type="button" onClick={() => setPendingVideo(null)} className="text-red-600">
+                  Убрать
+                </button>
+              </p>
+            )}
+          </div>
+        )}
+
+        {(pendingPhoto || pendingVideo) && (
+          <button
+            type="button"
+            onClick={handleSaveRecord}
+            disabled={saving}
+            className="mt-4 w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
+          >
+            {saving ? 'Сохранение…' : 'Сохранить запись о браке'}
+          </button>
+        )}
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
-      {!loading && photos.length === 0 && <p className="text-sm text-slate-400">Брака пока не фотографировали</p>}
+      {!loading && photos.length === 0 && <p className="text-sm text-slate-400">Брака пока не фиксировали</p>}
 
       {!loading && photos.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -525,9 +681,18 @@ function DefectsContent() {
               onClick={() => setDetailPhoto(p)}
               className="overflow-hidden rounded-lg border border-slate-200 bg-white text-left"
             >
-              {signedUrls[p.storage_path] ? (
+              {p.photo_path && signedUrls[p.photo_path] ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={signedUrls[p.storage_path]} alt="Фото брака" className="aspect-square w-full object-cover" />
+                <img
+                  src={signedUrls[p.photo_path]}
+                  alt="Фото брака"
+                  className="aspect-square w-full object-cover"
+                />
+              ) : p.video_path ? (
+                <div className="flex aspect-square w-full flex-col items-center justify-center gap-1 bg-slate-100 text-slate-400">
+                  <IconVideo className="h-6 w-6" />
+                  <span className="text-xs">Видео</span>
+                </div>
               ) : (
                 <div className="flex aspect-square w-full items-center justify-center bg-slate-100 text-xs text-slate-400">
                   Загрузка…
@@ -541,7 +706,10 @@ function DefectsContent() {
                     {p.batch_number != null ? `Партия №${p.batch_number}` : ''}
                   </p>
                 )}
-                <p className="text-xs text-slate-400">{formatDate(p.created_at)}</p>
+                <p className="text-xs text-slate-400">
+                  {formatDate(p.created_at)}
+                  {p.weight_kg != null ? ` · ${p.weight_kg} кг` : ''}
+                </p>
               </div>
             </button>
           ))}

@@ -29,6 +29,39 @@ function IconCamera({ className }: { className?: string }) {
   );
 }
 
+function IconVideo({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="2.5" y="5.5" width="10" height="9" rx="1.2" />
+      <path d="M12.5 8.7 17 6.3v7.4l-4.5-2.4" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconDownload({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M10 3v9M6.3 8.5 10 12l3.7-3.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.5 14v1.5a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V14" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+async function downloadFile(bucket: string, path: string, onError: (message: string) => void) {
+  const filename = path.split('/').pop() || 'file';
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600, { download: filename });
+  if (error || !data?.signedUrl) {
+    onError(error?.message ?? 'Не удалось получить ссылку на файл');
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = data.signedUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 function SewnReportContent() {
   const [pending, setPending] = useState<CuttingBatch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +79,11 @@ function SewnReportContent() {
   const [photos, setPhotos] = useState<DefectPhoto[]>([]);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [defectWeightKg, setDefectWeightKg] = useState('');
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
+  const [pendingVideo, setPendingVideo] = useState<File | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   async function loadPending() {
     setLoading(true);
@@ -72,13 +109,12 @@ function SewnReportContent() {
       .order('created_at', { ascending: false });
     const rows = (data as unknown as DefectPhoto[]) ?? [];
     setPhotos(rows);
-    if (rows.length > 0) {
-      const { data: signed } = await supabase.storage
-        .from(BUCKET)
-        .createSignedUrls(rows.map((r) => r.storage_path), 3600);
+    const paths = rows.flatMap((r) => [r.photo_path, r.video_path].filter((p): p is string => !!p));
+    if (paths.length > 0) {
+      const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrls(paths, 3600);
       const map: Record<string, string> = {};
       (signed ?? []).forEach((s, i) => {
-        if (s.signedUrl) map[rows[i].storage_path] = s.signedUrl;
+        if (s.signedUrl) map[paths[i]] = s.signedUrl;
       });
       setSignedUrls(map);
     } else {
@@ -131,41 +167,52 @@ function SewnReportContent() {
     setGroups([]);
     setDraft({});
     setPhotos([]);
+    setPendingPhoto(null);
+    setPendingVideo(null);
+    setDefectWeightKg('');
   }
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file || !selectedBatch) return;
-
-    setUploading(true);
-    setError(null);
-    const ext = file.name.split('.').pop() || 'jpg';
+  async function uploadOne(file: File): Promise<string> {
+    const ext = file.name.split('.').pop() || (file.type.startsWith('video') ? 'mp4' : 'jpg');
     const path = `${crypto.randomUUID()}.${ext}`;
-
     const { error: uploadError } = await supabase.storage
       .from(BUCKET)
-      .upload(path, file, { contentType: file.type || 'image/jpeg' });
-    if (uploadError) {
+      .upload(path, file, { contentType: file.type || 'application/octet-stream' });
+    if (uploadError) throw new Error(uploadError.message);
+    return path;
+  }
+
+  async function handleSaveDefectRecord() {
+    if ((!pendingPhoto && !pendingVideo) || !selectedBatch) return;
+    setError(null);
+    setUploading(true);
+
+    const uploadedPaths: string[] = [];
+    try {
+      const photoPath = pendingPhoto ? await uploadOne(pendingPhoto) : null;
+      if (photoPath) uploadedPaths.push(photoPath);
+      const videoPath = pendingVideo ? await uploadOne(pendingVideo) : null;
+      if (videoPath) uploadedPaths.push(videoPath);
+
+      const { error: insertError } = await supabase.from('defect_photos').insert({
+        photo_path: photoPath,
+        video_path: videoPath,
+        weight_kg: defectWeightKg.trim() ? Number(defectWeightKg) : null,
+        batch_id: selectedBatch.id,
+        color_id: selectedBatch.color_id,
+      });
+      if (insertError) throw new Error(insertError.message);
+
+      setPendingPhoto(null);
+      setPendingVideo(null);
+      setDefectWeightKg('');
+      loadPhotos(selectedBatch.id);
+    } catch (err) {
+      if (uploadedPaths.length > 0) await supabase.storage.from(BUCKET).remove(uploadedPaths);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
       setUploading(false);
-      setError(uploadError.message);
-      return;
     }
-
-    const { error: insertError } = await supabase.from('defect_photos').insert({
-      storage_path: path,
-      batch_id: selectedBatch.id,
-      color_id: selectedBatch.color_id,
-    });
-    setUploading(false);
-
-    if (insertError) {
-      await supabase.storage.from(BUCKET).remove([path]);
-      setError(insertError.message);
-      return;
-    }
-
-    loadPhotos(selectedBatch.id);
   }
 
   async function handleSave() {
@@ -310,37 +357,140 @@ function SewnReportContent() {
           ))}
 
         <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">Фото брака этой партии</h2>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="flex items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600 disabled:opacity-50"
-          >
-            <IconCamera className="h-4 w-4" />
-            {uploading ? 'Загрузка…' : 'Сфотографировать брак'}
-          </button>
+          <h2 className="mb-3 text-sm font-semibold text-slate-700">Брак этой партии</h2>
+
+          <label className="mb-3 block max-w-[10rem]">
+            <span className="mb-1 block text-xs font-medium text-slate-500">Сколько кг брака (необязательно)</span>
+            <input
+              type="number"
+              min={0}
+              step="0.1"
+              inputMode="decimal"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-base"
+              value={defectWeightKg}
+              onChange={(e) => setDefectWeightKg(e.target.value)}
+            />
+          </label>
+
+          <div className="flex flex-wrap gap-2">
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                e.target.value = '';
+                if (file) setPendingPhoto(file);
+              }}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              className="flex items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600"
+            >
+              <IconCamera className="h-4 w-4" />
+              {pendingPhoto ? 'Переснять фото' : 'Сфотографировать брак'}
+            </button>
+
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept="video/*"
+              capture="environment"
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                e.target.value = '';
+                if (file) setPendingVideo(file);
+              }}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => videoInputRef.current?.click()}
+              className="flex items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600"
+            >
+              <IconVideo className="h-4 w-4" />
+              {pendingVideo ? 'Переснять видео' : 'Записать видео брака'}
+            </button>
+          </div>
+
+          {(pendingPhoto || pendingVideo) && (
+            <div className="mt-3 space-y-1.5 text-sm text-slate-600">
+              {pendingPhoto && (
+                <p className="flex items-center justify-between">
+                  <span>📷 {pendingPhoto.name}</span>
+                  <button type="button" onClick={() => setPendingPhoto(null)} className="text-red-600">
+                    Убрать
+                  </button>
+                </p>
+              )}
+              {pendingVideo && (
+                <p className="flex items-center justify-between">
+                  <span>🎥 {pendingVideo.name}</span>
+                  <button type="button" onClick={() => setPendingVideo(null)} className="text-red-600">
+                    Убрать
+                  </button>
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={handleSaveDefectRecord}
+                disabled={uploading}
+                className="w-full rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {uploading ? 'Сохранение…' : 'Сохранить запись о браке'}
+              </button>
+            </div>
+          )}
 
           {photos.length > 0 && (
             <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
               {photos.map((p) => (
                 <div key={p.id} className="overflow-hidden rounded-md border border-slate-200">
-                  {signedUrls[p.storage_path] ? (
+                  {p.photo_path && signedUrls[p.photo_path] ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={signedUrls[p.storage_path]} alt="Фото брака" className="aspect-square w-full object-cover" />
+                    <img
+                      src={signedUrls[p.photo_path]}
+                      alt="Фото брака"
+                      className="aspect-square w-full object-cover"
+                    />
+                  ) : p.video_path ? (
+                    <div className="flex aspect-square w-full flex-col items-center justify-center gap-1 bg-slate-100 text-slate-400">
+                      <IconVideo className="h-5 w-5" />
+                      <span className="text-[10px]">Видео</span>
+                    </div>
                   ) : (
                     <div className="flex aspect-square w-full items-center justify-center bg-slate-100 text-xs text-slate-400">
                       …
                     </div>
                   )}
+                  <div className="flex items-center justify-between gap-1 p-1">
+                    {p.weight_kg != null && <span className="text-[10px] text-slate-500">{p.weight_kg} кг</span>}
+                    <div className="ml-auto flex gap-1">
+                      {p.photo_path && (
+                        <button
+                          type="button"
+                          onClick={() => downloadFile(BUCKET, p.photo_path!, setError)}
+                          className="text-indigo-600"
+                          aria-label="Скачать фото"
+                        >
+                          <IconDownload className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {p.video_path && (
+                        <button
+                          type="button"
+                          onClick={() => downloadFile(BUCKET, p.video_path!, setError)}
+                          className="text-indigo-600"
+                          aria-label="Скачать видео"
+                        >
+                          <IconVideo className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>

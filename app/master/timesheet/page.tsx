@@ -19,6 +19,7 @@ function TimesheetContent() {
   const [newName, setNewName] = useState('');
   const [addingEmployee, setAddingEmployee] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function loadEmployees() {
     const { data, error } = await supabase.from('employees').select('*').order('name');
@@ -74,6 +75,30 @@ function TimesheetContent() {
     setTogglingId(null);
   }
 
+  async function deleteEmployee(emp: Employee) {
+    if (
+      !confirm(
+        `Это удалит ВСЮ историю сотрудника «${emp.name}», включая явку и заработок. Действие нельзя отменить. Удалить?`
+      )
+    ) {
+      return;
+    }
+    setDeletingId(emp.id);
+    setError(null);
+    const { error } = await supabase.from('employees').delete().eq('id', emp.id);
+    setDeletingId(null);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setEmployees((prev) => prev.filter((e) => e.id !== emp.id));
+    setPresentIds((prev) => {
+      const next = new Set(prev);
+      next.delete(emp.id);
+      return next;
+    });
+  }
+
   async function addEmployee() {
     const name = newName.trim();
     if (!name) return;
@@ -119,19 +144,30 @@ function TimesheetContent() {
             return (
               <div
                 key={emp.id}
-                className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4"
+                className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-4"
               >
-                <span className="font-medium text-slate-800">{emp.name}</span>
-                <button
-                  type="button"
-                  onClick={() => toggle(emp.id)}
-                  disabled={togglingId === emp.id}
-                  className={`rounded-full px-4 py-1.5 text-sm font-medium disabled:opacity-50 ${
-                    present ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
-                  }`}
-                >
-                  {present ? 'Пришёл' : 'Не пришёл'}
-                </button>
+                <span className="min-w-0 truncate font-medium text-slate-800">{emp.name}</span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggle(emp.id)}
+                    disabled={togglingId === emp.id}
+                    className={`rounded-full px-4 py-1.5 text-sm font-medium disabled:opacity-50 ${
+                      present ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {present ? 'Пришёл' : 'Не пришёл'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteEmployee(emp)}
+                    disabled={deletingId === emp.id}
+                    className="rounded-md px-2 py-1.5 text-sm font-medium text-red-500 disabled:opacity-50"
+                    aria-label={`Удалить ${emp.name}`}
+                  >
+                    Удалить
+                  </button>
+                </div>
               </div>
             );
           })}

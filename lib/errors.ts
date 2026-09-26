@@ -10,3 +10,20 @@ export function friendlyBatchStatusError(message: string): string {
   }
   return message;
 }
+
+// Кладовщик может удалить вариант товара только пока по нему нет
+// реальных данных (см. 030_kladovshik_variant_delete.sql) — база
+// отклоняет попытку с техническим кодом в тексте ошибки, переводим в
+// понятную строку.
+export function friendlyVariantDeleteError(message: string): string {
+  if (message.includes('variant_has_stock')) {
+    return 'Остаток не равен нулю — сначала обнулите остаток на «Складе»';
+  }
+  if (message.includes('variant_has_receipts')) {
+    return 'По этому варианту уже был приход — удалить нельзя';
+  }
+  if (message.includes('variant_has_orders')) {
+    return 'Этот вариант уже участвовал в заказе — удалить нельзя';
+  }
+  return message;
+}

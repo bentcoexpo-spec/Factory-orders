@@ -285,15 +285,19 @@ export interface CuttingBatchItemRow {
   sewn_defect_quantity: number | null;
 }
 
-// Ряд из defect_photos_view — фото брака ткани, найденного во время
-// кроя. Привязка к материалу+цвету и к партии независимы и обе
-// необязательны (могут быть null по отдельности), см. README.
+// Ряд из defect_photos_view — фото/видео брака ткани, найденного во
+// время кроя. Привязка к материалу+цвету и к партии независимы и обе
+// необязательны (могут быть null по отдельности), см. README. Фото и
+// видео тоже оба необязательны по отдельности, но хотя бы один из них
+// обязан быть — это гарантирует CHECK в базе.
 export interface DefectPhoto {
   id: string;
   color_id: string | null;
   material_name: string | null;
   color: string | null;
-  storage_path: string;
+  photo_path: string | null;
+  video_path: string | null;
+  weight_kg: number | null;
   created_by: string | null;
   created_at: string;
   batch_id: string | null;
