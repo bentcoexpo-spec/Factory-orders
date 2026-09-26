@@ -142,6 +142,11 @@ export default function ProductsPage() {
     if (!form.product_name.trim()) return;
     setSaving(true);
     setError(null);
+    // Кладовщик всегда создаёт вариант с нулевым остатком — реальное
+    // количество он вносит отдельно через "Приход", с записью в журнал
+    // (stock_receipts). Поле "Остаток" ему и не показывается (см. форму
+    // ниже), но обнуляем явно, а не полагаемся только на то, что оно
+    // осталось пустым.
     const { error } = await supabase.from('product_variants_view').insert({
       product_name: form.product_name.trim(),
       color: form.color.trim() || null,
@@ -150,7 +155,7 @@ export default function ProductsPage() {
       sku: form.sku.trim() || null,
       unit: form.unit.trim() || 'шт',
       price: form.price === '' ? null : Number(form.price),
-      stock_quantity: Number(form.stock_quantity) || 0,
+      stock_quantity: isKladovshik ? 0 : Number(form.stock_quantity) || 0,
       warehouse_type: form.warehouse_type,
     });
     setSaving(false);
@@ -176,21 +181,45 @@ export default function ProductsPage() {
     const failed: string[] = [];
 
     for (const cell of cells) {
-      const { error: variantError } = await supabase.from('product_variants_view').insert({
-        product_name: form.product_name.trim(),
-        color: cell.color,
-        size: cell.size,
-        print_type: form.print_type.trim() || null,
-        sku: form.sku.trim() || null,
-        unit: form.unit.trim() || 'шт',
-        price: form.price === '' ? null : Number(form.price),
-        stock_quantity: cell.quantity,
-        warehouse_type: form.warehouse_type,
-      });
-      if (variantError) {
+      // У кладовщика та же двухшаговая запись, что уже есть на "Приходе":
+      // вариант создаётся с нулевым остатком, а количество из сетки идёт
+      // отдельной строкой в stock_receipts — тот же журнал прихода, а не
+      // прямая правка остатка в обход него.
+      const { data: variant, error: variantError } = await supabase
+        .from('product_variants_view')
+        .insert({
+          product_name: form.product_name.trim(),
+          color: cell.color,
+          size: cell.size,
+          print_type: form.print_type.trim() || null,
+          sku: form.sku.trim() || null,
+          unit: form.unit.trim() || 'шт',
+          price: isKladovshik ? null : form.price === '' ? null : Number(form.price),
+          stock_quantity: isKladovshik ? 0 : cell.quantity,
+          warehouse_type: form.warehouse_type,
+        })
+        .select()
+        .single();
+
+      if (variantError || !variant) {
         failed.push(`${cell.color} ${cell.size} (уже существует?)`);
         continue;
       }
+
+      if (isKladovshik) {
+        const { error: receiptError } = await supabase.from('stock_receipts').insert({
+          variant_id: variant.id,
+          packs: 0,
+          units_per_pack: 0,
+          loose_units: cell.quantity,
+          comment: 'Добавлено через «Склад»',
+        });
+        if (receiptError) {
+          failed.push(`${cell.color} ${cell.size} (создан, но не удалось оформить приход)`);
+          continue;
+        }
+      }
+
       created += 1;
     }
 
@@ -316,7 +345,7 @@ export default function ProductsPage() {
           />
         </label>
 
-        {!gridMode && (
+        {!gridMode && !isKladovshik && (
           <label className="block text-sm">
             <span className="mb-1 block text-xs font-medium text-slate-500">Остаток</span>
             <input
@@ -330,21 +359,28 @@ export default function ProductsPage() {
             />
           </label>
         )}
+        {!gridMode && isKladovshik && (
+          <p className="col-span-full text-xs text-slate-400 sm:col-span-2 lg:col-span-6">
+            Остаток начнётся с 0 — примите первую партию через «Приход».
+          </p>
+        )}
 
-        <label className="block text-sm">
-          <span className="mb-1 block text-xs font-medium text-slate-500">
-            Цена <span className="normal-case text-slate-400">(на весь товар)</span>
-          </span>
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            inputMode="decimal"
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-            value={form.price}
-            onChange={(e) => setForm({ ...form, price: e.target.value })}
-          />
-        </label>
+        {!isKladovshik && (
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-500">
+              Цена <span className="normal-case text-slate-400">(на весь товар)</span>
+            </span>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              inputMode="decimal"
+              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+              value={form.price}
+              onChange={(e) => setForm({ ...form, price: e.target.value })}
+            />
+          </label>
+        )}
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-500">Артикул</span>
           <input
@@ -564,7 +600,7 @@ export default function ProductsPage() {
         ))}
       </div>
 
-      {isCeo && !showAddForm && (
+      {(isCeo || (isKladovshik && selectedProduct)) && !showAddForm && (
         <button
           onClick={() => openAddForm(selectedProduct ?? undefined)}
           className="w-full rounded-md border border-dashed border-indigo-300 px-4 py-3 text-sm font-medium text-indigo-600 active:bg-indigo-50 sm:w-auto"
