@@ -4,6 +4,7 @@ import { useEffect, useState, FormEvent } from 'react';
 import { supabase } from '@/lib/supabase';
 import { ProductVariant, WarehouseType, WAREHOUSE_TYPE_LABELS, stockStatus, variantLabel } from '@/lib/types';
 import { formatMoney } from '@/lib/format';
+import { friendlyVariantDeleteError } from '@/lib/errors';
 import { useRole } from '@/components/RoleProvider';
 import SizeColorGrid, { GridCell } from '@/components/SizeColorGrid';
 
@@ -103,6 +104,11 @@ export default function ProductsPage() {
   }, [selectedProduct]);
 
   const isCeo = role === 'ceo';
+  const isKladovshik = role === 'kladovshik';
+  // Кладовщик может удалить только вариант без реальных данных — остаток
+  // ненулевой уже виден на клиенте, "нет прихода/заказов" база проверит
+  // сама (030_kladovshik_variant_delete.sql), лишний запрос сюда не тащим.
+  const canDelete = (v: ProductVariant) => isCeo || (isKladovshik && v.stock_quantity === 0);
   const typedVariants = variants.filter((v) => v.warehouse_type === activeType);
 
   const groupedProducts = Array.from(
@@ -204,7 +210,7 @@ export default function ProductsPage() {
   async function handleDelete(id: string) {
     if (!confirm('Удалить вариант товара?')) return;
     const { error } = await supabase.from('product_variants_view').delete().eq('id', id);
-    if (error) setError(error.message);
+    if (error) setError(friendlyVariantDeleteError(error.message));
     else loadVariants();
   }
 
@@ -411,7 +417,7 @@ export default function ProductsPage() {
                       {v.unit}
                     </p>
                   </div>
-                  {isCeo && (
+                  {canDelete(v) && (
                     <button
                       onClick={() => handleDelete(v.id)}
                       className="shrink-0 rounded-md px-2 py-1 text-sm font-medium text-red-600 active:bg-red-50"
@@ -454,7 +460,7 @@ export default function ProductsPage() {
                 <th className="px-4 py-3">Артикул</th>
                 <th className="px-4 py-3">Остаток</th>
                 {isCeo && <th className="px-4 py-3">Цена</th>}
-                {isCeo && <th className="px-4 py-3" />}
+                {(isCeo || isKladovshik) && <th className="px-4 py-3" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -476,14 +482,16 @@ export default function ProductsPage() {
                       </div>
                     </td>
                     {isCeo && <td className="px-4 py-3 text-slate-600">{formatMoney(v.price ?? 0)}</td>}
-                    {isCeo && (
+                    {(isCeo || isKladovshik) && (
                       <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => handleDelete(v.id)}
-                          className="text-xs font-medium text-red-600 hover:underline"
-                        >
-                          Удалить
-                        </button>
+                        {canDelete(v) && (
+                          <button
+                            onClick={() => handleDelete(v.id)}
+                            className="text-xs font-medium text-red-600 hover:underline"
+                          >
+                            Удалить
+                          </button>
+                        )}
                       </td>
                     )}
                   </tr>
