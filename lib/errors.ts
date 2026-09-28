@@ -27,3 +27,14 @@ export function friendlyVariantDeleteError(message: string): string {
   }
   return message;
 }
+
+// Возврат выдачи (статус "returned") разрешён только из "issued" — если
+// заказ уже кто-то обновил (например тоже кто-то нажал «Вернуть») или он
+// не был выдан, база отклоняет попытку техническим кодом (см.
+// 032_order_returns.sql), переводим в понятную строку.
+export function friendlyOrderReturnError(message: string): string {
+  if (message.includes('can_only_return_issued')) {
+    return 'Вернуть можно только уже выданный заказ — обновите список и попробуйте снова';
+  }
+  return message;
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ProductVariant, stockStatus, variantLabel } from '@/lib/types';
+import { ProductVariant, sizeRank, stockStatus, variantLabel } from '@/lib/types';
 
 function StockBadge({ quantity }: { quantity: number }) {
   const status = stockStatus(quantity);
@@ -37,7 +37,9 @@ export default function VariantPicker({
   const [activeColor, setActiveColor] = useState(colors[0] ?? '—');
   const [quantities, setQuantities] = useState<Record<string, string>>({});
 
-  const colorVariants = variants.filter((v) => (v.color ?? '—') === activeColor);
+  const colorVariants = variants
+    .filter((v) => (v.color ?? '—') === activeColor)
+    .sort((a, b) => sizeRank(a.size) - sizeRank(b.size));
   const filledCount = Object.values(quantities).filter((v) => Number(v) > 0).length;
 
   function setQty(id: string, value: string) {

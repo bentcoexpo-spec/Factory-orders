@@ -2,7 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { CUTTING_BATCH_STATUS_LABELS, CuttingBatch, DefectPhoto, RawMaterialColor, RawMaterialReceipt } from '@/lib/types';
+import {
+  CUTTING_BATCH_STATUS_LABELS,
+  CuttingBatch,
+  DefectPhoto,
+  RawMaterialColor,
+  RawMaterialReceipt,
+  sizeRank,
+} from '@/lib/types';
 import { formatDate } from '@/lib/format';
 import RequireRole from '@/components/RequireRole';
 
@@ -476,7 +483,11 @@ function DefectsContent() {
               <div className="mt-2 space-y-1">
                 {detailBatch.products.map((p, i) => (
                   <p key={i} className="text-xs text-slate-500">
-                    {p.product_name}: {p.sizes.map((s) => `${s.size} ${s.quantity}`).join(', ')}
+                    {p.product_name}:{' '}
+                    {[...p.sizes]
+                      .sort((a, b) => sizeRank(a.size) - sizeRank(b.size))
+                      .map((s) => `${s.size} ${s.quantity}`)
+                      .join(', ')}
                   </p>
                 ))}
               </div>

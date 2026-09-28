@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { CuttingBatch, CuttingBatchItemRow, DefectPhoto } from '@/lib/types';
+import { CuttingBatch, CuttingBatchItemRow, DefectPhoto, sizeRank } from '@/lib/types';
 import { formatDate } from '@/lib/format';
 import { friendlyBatchStatusError } from '@/lib/errors';
 import RequireRole from '@/components/RequireRole';
@@ -145,7 +145,7 @@ function SewnReportContent() {
     const grouped: ProductGroup[] = (products ?? []).map((p) => ({
       id: p.id,
       product_name: p.product_name,
-      items: itemRows.filter((it) => it.batch_product_id === p.id).sort((a, b) => a.size.localeCompare(b.size)),
+      items: itemRows.filter((it) => it.batch_product_id === p.id).sort((a, b) => sizeRank(a.size) - sizeRank(b.size)),
     }));
     setGroups(grouped);
 

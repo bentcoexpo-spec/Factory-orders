@@ -8,6 +8,11 @@ import { formatDate, formatMoney } from '@/lib/format';
 import StatusBadge from '@/components/StatusBadge';
 import { useRole } from '@/components/RoleProvider';
 
+// "returned" меняется только через кнопку «Вернуть на склад» на странице
+// заказа (с подтверждением) — не через этот выпадающий список без единого
+// диалога, как остальные статусы.
+const STATUS_SELECT_OPTIONS = ORDER_STATUSES.filter((s) => s.value !== 'returned');
+
 export default function OrdersPage() {
   const { role } = useRole();
   const [orders, setOrders] = useState<OrderView[]>([]);
@@ -108,7 +113,7 @@ export default function OrdersPage() {
                     onChange={(e) => handleStatusChange(o.id, e.target.value as OrderStatus)}
                     className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-700"
                   >
-                    {ORDER_STATUSES.map((s) => (
+                    {STATUS_SELECT_OPTIONS.map((s) => (
                       <option key={s.value} value={s.value}>
                         {s.label}
                       </option>
@@ -156,7 +161,7 @@ export default function OrdersPage() {
                           onChange={(e) => handleStatusChange(o.id, e.target.value as OrderStatus)}
                           className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600"
                         >
-                          {ORDER_STATUSES.map((s) => (
+                          {STATUS_SELECT_OPTIONS.map((s) => (
                             <option key={s.value} value={s.value}>
                               {s.label}
                             </option>

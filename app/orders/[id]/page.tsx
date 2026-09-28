@@ -14,10 +14,14 @@ import {
   variantLabel,
 } from '@/lib/types';
 import { formatDate, formatMoney } from '@/lib/format';
+import { friendlyOrderReturnError } from '@/lib/errors';
 import StatusBadge from '@/components/StatusBadge';
 import { useRole } from '@/components/RoleProvider';
 
-const STATUS_BUTTONS = ORDER_STATUSES.filter((s) => s.value !== 'closed_unfulfilled');
+// "closed_unfulfilled" ставится только через complete_order_with_shortage
+// (не прямой сменой статуса), "returned" — только через кнопку «Вернуть на
+// склад» ниже, с подтверждением: оба статуса убраны из общей сетки кнопок.
+const STATUS_BUTTONS = ORDER_STATUSES.filter((s) => s.value !== 'closed_unfulfilled' && s.value !== 'returned');
 
 export default function OrderDetailPage() {
   const params = useParams<{ id: string }>();
@@ -29,6 +33,7 @@ export default function OrderDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [showShortageDialog, setShowShortageDialog] = useState(false);
   const [resolvingShortage, setResolvingShortage] = useState(false);
+  const [returning, setReturning] = useState(false);
 
   async function loadOrder() {
     setLoading(true);
@@ -84,6 +89,23 @@ export default function OrderDetailPage() {
     }
   }
 
+  async function handleReturnOrder() {
+    if (!order) return;
+    if (
+      !confirm(
+        `Вернуть заказ клиента «${order.client_name}» на склад? Остаток по всем товарам заказа увеличится, а сам заказ станет виден только CEO. Действие нельзя отменить.`
+      )
+    ) {
+      return;
+    }
+    setReturning(true);
+    setError(null);
+    const { error } = await supabase.from('orders_view').update({ status: 'returned' }).eq('id', order.id);
+    setReturning(false);
+    if (error) setError(friendlyOrderReturnError(error.message));
+    else loadOrder();
+  }
+
   async function handleDelete() {
     if (!order) return;
     if (!confirm('Удалить заказ?')) return;
@@ -115,6 +137,12 @@ export default function OrderDetailPage() {
           </p>
         )}
         {order.closed_at && <p className="text-sm text-slate-500">Закрыт {formatDate(order.closed_at)}</p>}
+        {order.returned_at && (
+          <p className="text-sm font-medium text-orange-600">
+            Возвращено {formatDate(order.returned_at)}
+            {order.returned_by_email && <span> · вернул {order.returned_by_email}</span>}
+          </p>
+        )}
         {order.completion_reason && (
           <p className="mt-1 text-sm font-medium text-amber-600">
             Причина: {COMPLETION_REASON_LABELS[order.completion_reason]}
@@ -153,6 +181,15 @@ export default function OrderDetailPage() {
             </p>
           )}
           {order.comment && <p className="mt-3 text-sm text-slate-500">Комментарий: {order.comment}</p>}
+          {order.status === 'issued' && (role === 'ceo' || role === 'kladovshik') && (
+            <button
+              onClick={handleReturnOrder}
+              disabled={returning}
+              className="mt-3 w-full rounded-md border border-orange-300 px-3 py-2.5 text-sm font-medium text-orange-600 active:bg-orange-50 disabled:opacity-50 sm:w-auto"
+            >
+              {returning ? 'Возврат…' : 'Вернуть на склад'}
+            </button>
+          )}
         </div>
       </div>
 

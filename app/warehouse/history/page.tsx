@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { OrderView, OrderStatus, COMPLETION_REASON_LABELS } from '@/lib/types';
 import { formatDate } from '@/lib/format';
 import RequireRole from '@/components/RequireRole';
+import { useRole } from '@/components/RoleProvider';
 
 type Tab = 'pending' | 'issued' | 'closed';
 
@@ -28,6 +29,7 @@ function dateFor(tab: Tab, o: OrderView): string | null {
 }
 
 function HistoryContent() {
+  const { role } = useRole();
   const [tab, setTab] = useState<Tab>('pending');
   const [orders, setOrders] = useState<OrderView[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,17 +40,19 @@ function HistoryContent() {
       setLoading(true);
       const current = TABS.find((t) => t.key === tab)!;
       const dateColumn = tab === 'issued' ? 'issued_at' : tab === 'closed' ? 'closed_at' : 'created_at';
-      const { data, error } = await supabase
-        .from('orders_view')
-        .select('*')
-        .eq('status', current.status)
-        .order(dateColumn, { ascending: false });
+      // CEO видит в "Выданы" и уже возвращённые заказы (со своей меткой
+      // в карточке) — полная история, как и договаривались; у кладовщика
+      // возвращённый заказ из этой вкладки просто пропадает.
+      let query = supabase.from('orders_view').select('*');
+      query = role === 'ceo' && tab === 'issued' ? query.in('status', ['issued', 'returned']) : query.eq('status', current.status);
+      const { data, error } = await query.order(dateColumn, { ascending: false });
       if (error) setError(error.message);
       else setOrders((data as unknown as OrderView[]) ?? []);
       setLoading(false);
     }
     load();
-  }, [tab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, role]);
 
   return (
     <div className="space-y-6">
@@ -87,11 +91,19 @@ function HistoryContent() {
               >
                 <div>
                   <span className="font-medium text-slate-800">{o.client_name}</span>
+                  {o.status === 'returned' && (
+                    <span className="ml-2 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
+                      Возвращено
+                    </span>
+                  )}
                   {o.completion_reason && (
                     <span className="ml-2 text-xs text-amber-600">{COMPLETION_REASON_LABELS[o.completion_reason]}</span>
                   )}
-                  {tab === 'issued' && o.issued_by_name && (
+                  {tab === 'issued' && o.status === 'issued' && o.issued_by_name && (
                     <span className="ml-2 text-xs text-slate-500">выдал {o.issued_by_name}</span>
+                  )}
+                  {tab === 'issued' && o.status === 'returned' && o.returned_by_email && (
+                    <span className="ml-2 text-xs text-slate-500">вернул {o.returned_by_email}</span>
                   )}
                 </div>
                 <span className="text-sm text-slate-500">{date ? formatDate(date) : '—'}</span>

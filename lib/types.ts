@@ -6,7 +6,8 @@ export type OrderStatus =
   | 'shipped'
   | 'paid'
   | 'cancelled'
-  | 'closed_unfulfilled';
+  | 'closed_unfulfilled'
+  | 'returned';
 
 // Причина завершения заказа, у которого на момент выдачи не хватило
 // остатка хотя бы по одной позиции (см. complete_order_with_shortage
@@ -73,6 +74,42 @@ export interface ProductVariant {
 export const LOW_STOCK_THRESHOLD = 30;
 export const NO_PRINT = 'без печати';
 
+// Единый порядок размеров — везде в приложении, где список размеров
+// показывается пользователю (раньше был localeCompare, который даёт
+// алфавитный, а не размерный порядок: "L" < "M" < "S" < "XL"). Числовые
+// размеры (42, 44…) сортируются по значению; буквенные — по "ширине"
+// S < M < L < XL < XXL < XXXL и дальше; "2XL"/"3XL"/"4XL" — то же самое,
+// что "XXL"/"XXXL"/"XXXXL", получают тот же ранг, чтобы порядок не
+// зависел от того, как размер записан. Нераспознанное — в конец,
+// по алфавиту.
+const BASE_LETTER_SIZES = ['XXS', 'XS', 'S', 'M', 'L'];
+
+function xlCount(token: string): number | null {
+  const repeated = /^(X+)L$/.exec(token);
+  if (repeated) return repeated[1].length;
+  const numbered = /^(\d+)XL$/.exec(token);
+  if (numbered) return Number(numbered[1]);
+  return null;
+}
+
+export function sizeRank(size: string | null): number {
+  if (!size) return 1e9;
+  const trimmed = size.trim();
+  if (trimmed === '') return 1e9;
+  const numeric = Number(trimmed);
+  if (!Number.isNaN(numeric)) return numeric;
+  const upper = trimmed.toUpperCase();
+  const baseIdx = BASE_LETTER_SIZES.indexOf(upper);
+  if (baseIdx >= 0) return 1000 + baseIdx;
+  const xl = xlCount(upper);
+  if (xl !== null) return 1000 + BASE_LETTER_SIZES.length - 1 + xl;
+  return 5000;
+}
+
+export function sortSizes<T extends string | null>(sizes: T[]): T[] {
+  return [...sizes].sort((a, b) => sizeRank(a) - sizeRank(b) || String(a ?? '').localeCompare(String(b ?? ''), 'ru'));
+}
+
 export function stockStatus(quantity: number): 'out' | 'low' | 'ok' {
   if (quantity <= 0) return 'out';
   if (quantity <= LOW_STOCK_THRESHOLD) return 'low';
@@ -118,6 +155,10 @@ export interface OrderView {
   // Имя кладовщика, выдавшего заказ через Telegram-бота (у заказов, выданных
   // через сайт, и у прежних заказов — null).
   issued_by_name: string | null;
+  // Когда/кем вернули уже выданный заказ (статус "returned") — видно
+  // только CEO, у кладовщика оба поля всегда null (032_order_returns.sql).
+  returned_at: string | null;
+  returned_by_email: string | null;
 }
 
 // Ряд из stock_receipts_view — запись в истории поступлений.
@@ -176,6 +217,7 @@ export const ORDER_STATUSES: { value: OrderStatus; label: string; color: string 
   { value: 'paid', label: 'Оплачен', color: 'bg-green-600' },
   { value: 'cancelled', label: 'Отменён', color: 'bg-red-600' },
   { value: 'closed_unfulfilled', label: 'Закрыт без выдачи', color: 'bg-slate-400' },
+  { value: 'returned', label: 'Возвращено', color: 'bg-orange-500' },
 ];
 
 export const ROLE_LABELS: Record<Role, string> = {

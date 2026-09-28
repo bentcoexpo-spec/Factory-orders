@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { CUTTING_BATCH_STATUS_LABELS, CuttingBatch, SHOP_LABELS } from '@/lib/types';
+import { CUTTING_BATCH_STATUS_LABELS, CuttingBatch, SHOP_LABELS, sizeRank } from '@/lib/types';
 import { formatDate } from '@/lib/format';
 import RequireRole from '@/components/RequireRole';
 
@@ -61,7 +61,11 @@ function CuttingLogContent() {
               {b.products.length === 0 && <p className="text-xs text-slate-400">Товары ещё не добавлены</p>}
               {b.products.map((p, i) => (
                 <p key={i} className="text-xs text-slate-500">
-                  {p.product_name}: {p.sizes.map((s) => `${s.size} ${s.quantity}`).join(', ')}
+                  {p.product_name}:{' '}
+                  {[...p.sizes]
+                    .sort((a, b) => sizeRank(a.size) - sizeRank(b.size))
+                    .map((s) => `${s.size} ${s.quantity}`)
+                    .join(', ')}
                 </p>
               ))}
             </div>

@@ -7,6 +7,7 @@ import {
   StockReceipt,
   WarehouseType,
   WAREHOUSE_TYPE_LABELS,
+  sizeRank,
   stockStatus,
   variantLabel,
 } from '@/lib/types';
@@ -122,7 +123,7 @@ function ReceivingForm() {
       map.set(v.product_name, list);
       return map;
     }, new Map<string, ProductVariant[]>())
-  );
+  ).map(([name, list]) => [name, list.sort((a, b) => sizeRank(a.size) - sizeRank(b.size))] as [string, ProductVariant[]]);
 
   function selectVariant(variant: ProductVariant) {
     setSelected(variant);

@@ -1,4 +1,4 @@
-import type { ProductVariant } from '@/lib/types';
+import { ProductVariant, sizeRank, sortSizes } from '@/lib/types';
 
 // Чистые функции разбора текста для Telegram-бота (без обращений к базе),
 // чтобы их можно было проверять отдельно от самого бота.
@@ -102,20 +102,6 @@ function isLatin(token: string): boolean {
 function sizeLookalike(token: string): string | null {
   if (!/^[мхсл]{1,4}$/.test(token)) return null;
   return token.replace(/м/g, 'm').replace(/х/g, 'x').replace(/с/g, 's').replace(/л/g, 'l');
-}
-
-const LETTER_SIZES = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '2XL', '3XL', '4XL'];
-
-export function sizeRank(size: string | null): number {
-  if (!size) return 1e9;
-  const numeric = Number(size);
-  if (!Number.isNaN(numeric)) return numeric;
-  const idx = LETTER_SIZES.indexOf(size.toUpperCase());
-  return idx >= 0 ? 1000 + idx : 5000;
-}
-
-export function sortSizes<T extends string | null>(sizes: T[]): T[] {
-  return [...sizes].sort((a, b) => sizeRank(a) - sizeRank(b) || String(a ?? '').localeCompare(String(b ?? ''), 'ru'));
 }
 
 // Приводит введённое значение к уже существующему написанию («черный» →

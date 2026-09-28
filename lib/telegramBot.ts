@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { NO_PRINT, ORDER_STATUSES, ProductVariant, stockStatus, variantLabel } from '@/lib/types';
+import { NO_PRINT, ORDER_STATUSES, ProductVariant, sizeRank, sortSizes, stockStatus, variantLabel } from '@/lib/types';
 import {
   sendMessage,
   editMessageText,
@@ -21,8 +21,6 @@ import {
   phoneDigits,
   phoneKey,
   sameProductName,
-  sizeRank,
-  sortSizes,
 } from '@/lib/telegramParse';
 import { both, Lang, MessageKey, Params, raw, t } from '@/lib/telegramI18n';
 

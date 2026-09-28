@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { CuttingBatch, RawMaterialIssue, SHOP_LABELS, Shop } from '@/lib/types';
+import { CuttingBatch, RawMaterialIssue, SHOP_LABELS, Shop, sizeRank } from '@/lib/types';
 import { formatDate } from '@/lib/format';
 import RequireRole from '@/components/RequireRole';
 
@@ -396,7 +396,11 @@ function BatchForm() {
                 <div className="mt-1 space-y-0.5">
                   {b.products.map((p, i) => (
                     <p key={i} className="text-xs text-slate-500">
-                      {p.product_name}: {p.sizes.map((s) => `${s.size} ${s.quantity}`).join(', ')}
+                      {p.product_name}:{' '}
+                      {[...p.sizes]
+                        .sort((a, b) => sizeRank(a.size) - sizeRank(b.size))
+                        .map((s) => `${s.size} ${s.quantity}`)
+                        .join(', ')}
                     </p>
                   ))}
                 </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ProductVariant, WarehouseType, WAREHOUSE_TYPE_LABELS, stockStatus, variantLabel } from '@/lib/types';
+import { ProductVariant, WarehouseType, WAREHOUSE_TYPE_LABELS, sizeRank, stockStatus, variantLabel } from '@/lib/types';
 import { formatMoney } from '@/lib/format';
 import { friendlyVariantDeleteError } from '@/lib/errors';
 import { useRole } from '@/components/RoleProvider';
@@ -122,9 +122,9 @@ export default function ProductsPage() {
 
   const productVariants = selectedProduct ? typedVariants.filter((v) => v.product_name === selectedProduct) : [];
   const productColors = Array.from(new Set(productVariants.map((v) => v.color).filter((c): c is string => !!c)));
-  const filteredProductVariants = colorFilter
-    ? productVariants.filter((v) => v.color === colorFilter)
-    : productVariants;
+  const filteredProductVariants = (colorFilter ? productVariants.filter((v) => v.color === colorFilter) : productVariants)
+    .slice()
+    .sort((a, b) => sizeRank(a.size) - sizeRank(b.size));
 
   function openAddForm(lockedName?: string) {
     setForm(emptyForm(activeType, lockedName ?? ''));
