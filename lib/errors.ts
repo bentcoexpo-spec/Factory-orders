@@ -38,3 +38,17 @@ export function friendlyOrderReturnError(message: string): string {
   }
   return message;
 }
+
+// Переименование товара (см. 033_product_rename.sql) — пустое название
+// база отклоняет сама, а совпадение с уже существующим товаром (без
+// учёта регистра) ловит уникальный индекс products_name_lower_idx —
+// оба раза с техническим текстом, переводим в понятный.
+export function friendlyProductRenameError(message: string): string {
+  if (message.includes('product_name_required')) {
+    return 'Укажите название товара';
+  }
+  if (message.includes('products_name_lower_idx') || message.includes('duplicate key')) {
+    return 'Товар с таким названием уже есть — выберите другое';
+  }
+  return message;
+}

@@ -4,7 +4,7 @@ import { useEffect, useState, FormEvent } from 'react';
 import { supabase } from '@/lib/supabase';
 import { ProductVariant, WarehouseType, WAREHOUSE_TYPE_LABELS, sizeRank, stockStatus, variantLabel } from '@/lib/types';
 import { formatMoney } from '@/lib/format';
-import { friendlyVariantDeleteError } from '@/lib/errors';
+import { friendlyProductRenameError, friendlyVariantDeleteError } from '@/lib/errors';
 import { useRole } from '@/components/RoleProvider';
 import SizeColorGrid, { GridCell } from '@/components/SizeColorGrid';
 
@@ -83,6 +83,8 @@ export default function ProductsPage() {
   const [gridSaving, setGridSaving] = useState(false);
   const [form, setForm] = useState(emptyForm('finished_goods'));
   const [stockDrafts, setStockDrafts] = useState<Record<string, string>>({});
+  const [renameDraft, setRenameDraft] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
 
   async function loadVariants() {
     setLoading(true);
@@ -101,6 +103,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     setColorFilter(null);
+    setRenameDraft(null);
   }, [selectedProduct]);
 
   const isCeo = role === 'ceo';
@@ -265,6 +268,37 @@ export default function ProductsPage() {
       delete next[variant.id];
       return next;
     });
+    loadVariants();
+  }
+
+  async function handleRenameProduct() {
+    if (!selectedProduct || renameDraft === null || productVariants.length === 0) return;
+    const trimmed = renameDraft.trim();
+    if (!trimmed) {
+      setError('Укажите название товара');
+      return;
+    }
+    if (trimmed === selectedProduct) {
+      setRenameDraft(null);
+      return;
+    }
+    setRenaming(true);
+    setError(null);
+    // Название хранится один раз в products.name — правим через любой
+    // один вариант товара, триггер меняет products.name целиком
+    // (product_variants_view_update, 033_product_rename.sql), поэтому
+    // это сразу переименовывает товар для всех его вариантов.
+    const { error } = await supabase
+      .from('product_variants_view')
+      .update({ product_name: trimmed })
+      .eq('id', productVariants[0].id);
+    setRenaming(false);
+    if (error) {
+      setError(friendlyProductRenameError(error.message));
+      return;
+    }
+    setRenameDraft(null);
+    setSelectedProduct(trimmed);
     loadVariants();
   }
 
@@ -554,8 +588,55 @@ export default function ProductsPage() {
             ← Назад к складу
           </button>
           <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-            <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">{selectedProduct}</h1>
-            {isCeo && productVariants.length > 0 && (
+            {renameDraft !== null ? (
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <input
+                  autoFocus
+                  className="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-xl font-semibold text-slate-900 sm:text-2xl"
+                  value={renameDraft}
+                  onChange={(e) => setRenameDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleRenameProduct();
+                    if (e.key === 'Escape') setRenameDraft(null);
+                  }}
+                />
+                <button
+                  onClick={handleRenameProduct}
+                  disabled={renaming}
+                  className="shrink-0 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {renaming ? '…' : 'Сохранить'}
+                </button>
+                <button
+                  onClick={() => setRenameDraft(null)}
+                  disabled={renaming}
+                  className="shrink-0 rounded-md px-2 py-2 text-sm font-medium text-slate-400"
+                >
+                  Отмена
+                </button>
+              </div>
+            ) : (
+              <div className="flex min-w-0 items-center gap-2">
+                <h1 className="min-w-0 truncate text-xl font-semibold text-slate-900 sm:text-2xl">{selectedProduct}</h1>
+                {(isCeo || isKladovshik) && productVariants.length > 0 && (
+                  <button
+                    onClick={() => setRenameDraft(selectedProduct)}
+                    className="shrink-0 rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                    aria-label="Переименовать товар"
+                    title="Переименовать товар"
+                  >
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4">
+                      <path
+                        d="M13.5 3.5a1.5 1.5 0 0 1 2.12 2.12L6.5 14.75l-3 0.75.75-3 9.25-9Z"
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )}
+            {isCeo && productVariants.length > 0 && renameDraft === null && (
               <label className="flex items-center gap-2 text-xs text-slate-500">
                 Тип склада:
                 <select
