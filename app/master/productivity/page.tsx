@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { AttendanceRecord, Employee, WorkRecord } from '@/lib/types';
 import { formatMoney } from '@/lib/format';
 import RequireRole from '@/components/RequireRole';
+import BarChart from '@/components/charts/BarChart';
 
 function pastDates(days: number): string[] {
   const out: string[] = [];
@@ -20,56 +21,6 @@ function pastDates(days: number): string[] {
 function shortDateLabel(iso: string) {
   const [, m, d] = iso.split('-');
   return `${d}.${m}`;
-}
-
-interface DayBar {
-  date: string;
-  quantity: number;
-}
-
-function DailyBarChart({ days }: { days: DayBar[] }) {
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const max = Math.max(1, ...days.map((d) => d.quantity));
-  const active = activeIndex != null ? days[activeIndex] : null;
-
-  return (
-    <div>
-      <div className="flex h-32 items-end gap-[2px]">
-        {days.map((d, i) => {
-          const heightPct = Math.max((d.quantity / max) * 100, d.quantity > 0 ? 4 : 1.5);
-          const isActive = activeIndex === i;
-          return (
-            <button
-              key={d.date}
-              type="button"
-              onClick={() => setActiveIndex(isActive ? null : i)}
-              className="group flex min-w-0 flex-1 flex-col items-stretch justify-end"
-              aria-label={`${shortDateLabel(d.date)}: ${d.quantity} шт`}
-            >
-              <div
-                className={`w-full rounded-t ${isActive ? 'bg-indigo-600' : 'bg-indigo-300 group-hover:bg-indigo-400'}`}
-                style={{ height: `${heightPct}%` }}
-              />
-            </button>
-          );
-        })}
-      </div>
-      <div className="mt-1 flex justify-between text-[10px] text-slate-400">
-        <span>{shortDateLabel(days[0].date)}</span>
-        <span>{shortDateLabel(days[Math.floor(days.length / 2)].date)}</span>
-        <span>{shortDateLabel(days[days.length - 1].date)}</span>
-      </div>
-      <p className="mt-2 text-sm text-slate-600">
-        {active ? (
-          <>
-            <span className="font-medium text-slate-900">{shortDateLabel(active.date)}</span> — {active.quantity} шт
-          </>
-        ) : (
-          <span className="text-slate-400">Нажмите на столбик, чтобы увидеть день</span>
-        )}
-      </p>
-    </div>
-  );
 }
 
 interface StrengthRow {
@@ -227,7 +178,11 @@ function EmployeeDetail({
         <>
           <div className="rounded-lg border border-slate-200 bg-white p-4">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">Выработка за 30 дней</h2>
-            <DailyBarChart days={dailySeries} />
+            <BarChart
+              points={dailySeries.map((d) => ({ label: shortDateLabel(d.date), value: d.quantity }))}
+              formatValue={(v) => `${v} шт`}
+              emptyHint="Нажмите на столбик, чтобы увидеть день"
+            />
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-white p-4">

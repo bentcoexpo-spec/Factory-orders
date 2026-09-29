@@ -5,7 +5,24 @@ import { usePathname, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useRole } from './RoleProvider';
 import { ROLE_LABELS } from '@/lib/types';
-import { NAV_ITEMS, isNavItemActive } from './navItems';
+import { NAV_ITEMS, NAV_GROUPS, isNavItemActive } from './navItems';
+import type { NavItem } from './navItems';
+
+function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  const active = isNavItemActive(item.href, pathname);
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+        active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+      }`}
+    >
+      <Icon className={`h-4 w-4 ${active ? 'text-indigo-600' : 'text-slate-400'}`} />
+      {item.label}
+    </Link>
+  );
+}
 
 export default function Sidebar() {
   const pathname = usePathname() ?? '';
@@ -13,6 +30,10 @@ export default function Sidebar() {
   const { role, email } = useRole();
 
   const items = NAV_ITEMS.filter((item) => !role || item.roles.includes(role));
+  // У CEO пунктов много (~20) — группируем в 4 раздела с заголовками.
+  // У остальных ролей меню маленькое, оставляем плоским списком, как
+  // было.
+  const grouped = role === 'ceo';
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -31,23 +52,25 @@ export default function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-0.5 px-3 py-4">
-        {items.map((item) => {
-          const active = isNavItemActive(item.href, pathname);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
-            >
-              <Icon className={`h-4 w-4 ${active ? 'text-indigo-600' : 'text-slate-400'}`} />
-              {item.label}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+        {grouped
+          ? NAV_GROUPS.map((group) => {
+              const groupItems = items.filter((item) => item.group === group.key);
+              if (groupItems.length === 0) return null;
+              return (
+                <div key={group.key}>
+                  <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    {group.label}
+                  </p>
+                  <div className="space-y-0.5">
+                    {groupItems.map((item) => (
+                      <NavLink key={item.href} item={item} pathname={pathname} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })
+          : items.map((item) => <NavLink key={item.href} item={item} pathname={pathname} />)}
       </nav>
 
       <div className="border-t border-slate-200 px-4 py-4">

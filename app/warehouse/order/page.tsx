@@ -5,7 +5,7 @@ import OrderForm from '@/components/OrderForm';
 
 export default function WarehouseOrderPage() {
   return (
-    <RequireRole roles={['kladovshik']}>
+    <RequireRole roles={['kladovshik', 'ceo']}>
       <OrderForm
         heading="Заказ"
         subheading="Поиск/добавление клиента и товара"

@@ -37,12 +37,45 @@ export const SHOP_LABELS: Record<Shop, string> = {
   workshop: 'Цех',
 };
 
+export type ClientCategory = 'expo' | 'local';
+
+export const CLIENT_CATEGORY_LABELS: Record<ClientCategory, string> = {
+  expo: 'Expo',
+  local: 'Внутренний рынок',
+};
+
 export interface Client {
   id: string;
   name: string;
   phone: string | null;
   email: string | null;
   address: string | null;
+  category: ClientCategory | null;
+  created_at: string;
+}
+
+// Ряд из client_debt_view — долг клиента одной строкой: сумма выданных
+// заказов минус сумма оплат (034_client_finance.sql).
+export interface ClientDebt {
+  id: string;
+  name: string;
+  phone: string | null;
+  category: ClientCategory | null;
+  created_at: string;
+  issued_total: number;
+  paid_total: number;
+  debt: number;
+}
+
+// Ряд из client_payments_view — одна оплата клиента на общий счёт, не
+// привязанная к конкретному заказу.
+export interface ClientPayment {
+  id: string;
+  client_id: string;
+  amount: number;
+  comment: string | null;
+  created_by: string | null;
+  created_by_email: string | null;
   created_at: string;
 }
 

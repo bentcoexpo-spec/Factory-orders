@@ -7,6 +7,9 @@ export interface NavItem {
   icon: (props: { className?: string }) => JSX.Element;
   roles: Role[];
   hideOnMobileNav?: boolean;
+  // Группа раздела CEO (см. NAV_GROUPS ниже) — только у пунктов,
+  // видимых CEO. У остальных ролей меню остаётся плоским, как и было.
+  group?: string;
 }
 
 export function IconOrders({ className }: { className?: string }) {
@@ -136,7 +139,7 @@ export function IconHistory({ className }: { className?: string }) {
 // когда там и так тесно, а действие доступно другим способом
 // (например, кнопкой на самой странице).
 export const NAV_ITEMS: NavItem[] = [
-  { href: '/orders', label: 'Заказы', shortLabel: 'Заказы', icon: IconOrders, roles: ['ceo'] },
+  { href: '/orders', label: 'Заказы', shortLabel: 'Заказы', icon: IconOrders, roles: ['ceo'], group: 'sklad' },
   {
     href: '/orders/new',
     label: 'Новый заказ',
@@ -144,8 +147,9 @@ export const NAV_ITEMS: NavItem[] = [
     icon: IconPlus,
     roles: ['ceo'],
     hideOnMobileNav: true,
+    group: 'sklad',
   },
-  { href: '/clients', label: 'Клиенты', shortLabel: 'Клиенты', icon: IconUsers, roles: ['ceo'] },
+  { href: '/clients', label: 'Клиенты', shortLabel: 'Клиенты', icon: IconUsers, roles: ['ceo'], group: 'sklad' },
   {
     href: '/warehouse/receiving',
     label: 'Приход',
@@ -158,15 +162,24 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Заказ',
     shortLabel: 'Заказ',
     icon: IconOutgoing,
-    roles: ['kladovshik'],
+    roles: ['kladovshik', 'ceo'],
+    group: 'sklad',
   },
-  { href: '/products', label: 'Склад', shortLabel: 'Склад', icon: IconBox, roles: ['ceo', 'kladovshik'] },
+  {
+    href: '/products',
+    label: 'Склад',
+    shortLabel: 'Склад',
+    icon: IconBox,
+    roles: ['ceo', 'kladovshik'],
+    group: 'sklad',
+  },
   {
     href: '/warehouse/history',
     label: 'История',
     shortLabel: 'История',
     icon: IconHistory,
     roles: ['ceo', 'kladovshik'],
+    group: 'sklad',
   },
   {
     href: '/raw/receiving',
@@ -245,16 +258,64 @@ export const NAV_ITEMS: NavItem[] = [
     icon: IconReceiving,
     roles: ['ceo'],
     hideOnMobileNav: true,
+    group: 'sklad',
+  },
+  {
+    href: '/analytics',
+    label: 'Аналитика',
+    shortLabel: 'Аналитика',
+    icon: IconChart,
+    roles: ['ceo'],
+    group: 'sklad',
+  },
+  {
+    href: '/control/zakroyshik',
+    label: 'Сводка',
+    shortLabel: 'Сводка',
+    icon: IconChart,
+    roles: ['ceo'],
+    group: 'zakroyshik',
   },
   {
     href: '/cutting-log',
-    label: 'Действия закройщика',
-    shortLabel: 'Раскрой',
+    label: 'Партии',
+    shortLabel: 'Партии',
     icon: IconScissors,
     roles: ['ceo'],
-    hideOnMobileNav: true,
+    group: 'zakroyshik',
   },
-  { href: '/analytics', label: 'Аналитика', shortLabel: 'Аналитика', icon: IconChart, roles: ['ceo'] },
+  {
+    href: '/control/tsekh',
+    label: 'Сводка',
+    shortLabel: 'Сводка',
+    icon: IconChart,
+    roles: ['ceo'],
+    group: 'tsekh',
+  },
+  {
+    href: '/finance',
+    label: 'Финансы',
+    shortLabel: 'Финансы',
+    icon: IconCoins,
+    roles: ['ceo'],
+    group: 'finance',
+  },
+];
+
+// Разделы верхнего уровня меню CEO — каждый пункт NAV_ITEMS с полем
+// group принадлежит одному из них. defaultHref — куда ведёт иконка
+// раздела в нижнем меню на телефоне (первый/главный экран раздела).
+export const NAV_GROUPS: {
+  key: string;
+  label: string;
+  shortLabel: string;
+  icon: (props: { className?: string }) => JSX.Element;
+  defaultHref: string;
+}[] = [
+  { key: 'zakroyshik', label: 'Контроль Закройщика', shortLabel: 'Закройщик', icon: IconScissors, defaultHref: '/control/zakroyshik' },
+  { key: 'sklad', label: 'Контроль Склада', shortLabel: 'Склад', icon: IconBox, defaultHref: '/orders' },
+  { key: 'tsekh', label: 'Контроль Цеха', shortLabel: 'Цех', icon: IconCheckCircle, defaultHref: '/control/tsekh' },
+  { key: 'finance', label: 'Финансы', shortLabel: 'Финансы', icon: IconCoins, defaultHref: '/finance' },
 ];
 
 export const MOBILE_NAV_ITEMS: NavItem[] = NAV_ITEMS.filter((item) => !item.hideOnMobileNav);
@@ -264,4 +325,11 @@ export function isNavItemActive(href: string, pathname: string) {
     return pathname === '/orders' || (pathname.startsWith('/orders/') && pathname !== '/orders/new');
   }
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+// Раздел активен, если текущий путь совпадает с любым из его пунктов —
+// используется и в нижнем меню (какая из 4 иконок подсвечена), и в
+// полоске вкладок внутри раздела (GroupTabBar).
+export function isGroupActive(groupKey: string, pathname: string) {
+  return NAV_ITEMS.some((item) => item.group === groupKey && isNavItemActive(item.href, pathname));
 }
