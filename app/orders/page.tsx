@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { OrderView, OrderStatus, ORDER_STATUSES } from '@/lib/types';
+import { COMPLETION_REASON_LABELS, OrderView, OrderStatus, ORDER_STATUSES } from '@/lib/types';
 import { formatDate, formatMoney } from '@/lib/format';
 import StatusBadge from '@/components/StatusBadge';
 import { useRole } from '@/components/RoleProvider';
@@ -12,6 +12,37 @@ import { useRole } from '@/components/RoleProvider';
 // заказа (с подтверждением) — не через этот выпадающий список без единого
 // диалога, как остальные статусы.
 const STATUS_SELECT_OPTIONS = ORDER_STATUSES.filter((s) => s.value !== 'returned');
+
+// Дата, которую показываем зависит от статуса — то же, чем раньше
+// отдельно занималась «История» (вкладки «Ожидают»/«Выданы»/«Закрыты»
+// с разными колонками дат); здесь это один список, поэтому колонка
+// "умная" сама по себе, без отдельных вкладок.
+function dateFor(o: OrderView): string {
+  if ((o.status === 'issued' || o.status === 'returned') && o.issued_at) return o.issued_at;
+  if (o.status === 'closed_unfulfilled' && o.closed_at) return o.closed_at;
+  return o.created_at;
+}
+
+function OrderMeta({ o }: { o: OrderView }) {
+  return (
+    <>
+      {o.status === 'returned' && (
+        <span className="ml-2 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
+          Возвращено
+        </span>
+      )}
+      {o.completion_reason && (
+        <span className="ml-2 text-xs text-amber-600">{COMPLETION_REASON_LABELS[o.completion_reason]}</span>
+      )}
+      {o.status === 'issued' && o.issued_by_name && (
+        <span className="ml-2 text-xs text-slate-500">выдал {o.issued_by_name}</span>
+      )}
+      {o.status === 'returned' && o.returned_by_email && (
+        <span className="ml-2 text-xs text-slate-500">вернул {o.returned_by_email}</span>
+      )}
+    </>
+  );
+}
 
 export default function OrdersPage() {
   const { role } = useRole();
@@ -42,7 +73,9 @@ export default function OrdersPage() {
     else loadOrders();
   }
 
-  const visibleOrders = filter === 'all' ? orders : orders.filter((o) => o.status === filter);
+  const visibleOrders = (filter === 'all' ? orders : orders.filter((o) => o.status === filter))
+    .slice()
+    .sort((a, b) => dateFor(b).localeCompare(dateFor(a)));
   const showTotals = orders.some((o) => o.total !== null);
 
   return (
@@ -50,11 +83,11 @@ export default function OrdersPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Заказы</h1>
-          <p className="mt-1 text-sm text-slate-500">Все заказы фабрики</p>
+          <p className="mt-1 text-sm text-slate-500">Все заказы фабрики — ожидают, выданы, закрыты, возвращены</p>
         </div>
         {role && (
           <Link
-            href="/orders/new"
+            href="/warehouse/order"
             className="rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-500"
           >
             + Новый заказ
@@ -101,8 +134,11 @@ export default function OrdersPage() {
                   </Link>
                   <StatusBadge status={o.status} />
                 </div>
+                <p className="mt-0.5">
+                  <OrderMeta o={o} />
+                </p>
                 <div className="mt-1 flex items-center justify-between text-xs text-slate-400">
-                  <span>{formatDate(o.created_at)}</span>
+                  <span>{formatDate(dateFor(o))}</span>
                   {o.total !== null && (
                     <span className="text-sm font-medium text-slate-700">{formatMoney(o.total)}</span>
                   )}
@@ -138,7 +174,7 @@ export default function OrdersPage() {
                   <th className="px-4 py-3">Клиент</th>
                   {showTotals && <th className="px-4 py-3">Сумма</th>}
                   <th className="px-4 py-3">Статус</th>
-                  <th className="px-4 py-3">Создан</th>
+                  <th className="px-4 py-3">Дата</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -149,6 +185,7 @@ export default function OrdersPage() {
                       <Link href={`/orders/${o.id}`} className="hover:underline">
                         {o.client_name}
                       </Link>
+                      <OrderMeta o={o} />
                     </td>
                     {showTotals && (
                       <td className="px-4 py-3 text-slate-600">{o.total !== null ? formatMoney(o.total) : '—'}</td>
@@ -169,7 +206,7 @@ export default function OrdersPage() {
                         </select>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-500">{formatDate(o.created_at)}</td>
+                    <td className="px-4 py-3 text-slate-500">{formatDate(dateFor(o))}</td>
                     <td className="px-4 py-3 text-right">
                       <Link href={`/orders/${o.id}`} className="text-xs font-medium text-indigo-600 hover:underline">
                         Детали

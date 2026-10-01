@@ -77,8 +77,8 @@ function AnalyticsContent() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Аналитика</h1>
-        <p className="mt-1 text-sm text-slate-500">Сводка по заказам фабрики</p>
+        <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Контроль склада</h1>
+        <p className="mt-1 text-sm text-slate-500">Сводка по заказам, выручке и клиентам</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

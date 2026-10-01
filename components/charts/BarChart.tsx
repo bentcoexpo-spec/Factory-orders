@@ -31,7 +31,15 @@ export default function BarChart({
 
   return (
     <div>
-      <div className="flex h-32 items-end gap-[2px]">
+      {/* items-stretch (не items-end!) — высота столбика задаётся в
+          процентах у внутреннего div; проценты разрешаются только
+          относительно РОДИТЕЛЯ С ОПРЕДЕЛЁННОЙ высотой. При items-end
+          (прежнее значение) сама кнопка-ячейка высоты не имеет (сжата
+          по контенту), процентная высота внутри не от чего посчитать —
+          столбик рендерится нулевой ВСЕГДА, независимо от данных. При
+          items-stretch кнопка растягивается на всю высоту h-32, и уже
+          внутри неё justify-end прижимает закрашенную часть к низу. */}
+      <div className="flex h-32 items-stretch gap-[2px]">
         {points.map((p, i) => {
           const heightPct = Math.max((p.value / max) * 100, p.value > 0 ? 4 : 1.5);
           const isActive = activeIndex === i;

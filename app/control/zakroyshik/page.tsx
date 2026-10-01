@@ -3,34 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { CuttingBatch, DefectPhoto, RawMaterialColor } from '@/lib/types';
+import { lastNWeeks, weekLabel, weekStart } from '@/lib/dateBuckets';
 import RequireRole from '@/components/RequireRole';
 import BarChart from '@/components/charts/BarChart';
 import LineChart from '@/components/charts/LineChart';
-
-// Понедельник той недели, в которую попадает дата — общий бакет для
-// обоих графиков на этой сводке.
-function weekStart(iso: string): string {
-  const d = new Date(iso);
-  const day = (d.getDay() + 6) % 7; // 0 = понедельник
-  d.setDate(d.getDate() - day);
-  return d.toISOString().slice(0, 10);
-}
-
-function weekLabel(iso: string) {
-  const [, m, d] = iso.split('-');
-  return `${d}.${m}`;
-}
-
-function lastNWeeks(n: number): string[] {
-  const out: string[] = [];
-  const today = new Date();
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i * 7);
-    out.push(weekStart(d.toISOString()));
-  }
-  return Array.from(new Set(out));
-}
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (

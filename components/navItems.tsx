@@ -139,17 +139,10 @@ export function IconHistory({ className }: { className?: string }) {
 // когда там и так тесно, а действие доступно другим способом
 // (например, кнопкой на самой странице).
 export const NAV_ITEMS: NavItem[] = [
+  // Контроль склада — порядок в массиве = порядок вкладок внутри раздела
+  // (GroupTabBar сохраняет этот порядок), поэтому "Сводка" идёт первой.
+  { href: '/analytics', label: 'Сводка', shortLabel: 'Сводка', icon: IconChart, roles: ['ceo'], group: 'sklad' },
   { href: '/orders', label: 'Заказы', shortLabel: 'Заказы', icon: IconOrders, roles: ['ceo'], group: 'sklad' },
-  {
-    href: '/orders/new',
-    label: 'Новый заказ',
-    shortLabel: 'Новый',
-    icon: IconPlus,
-    roles: ['ceo'],
-    hideOnMobileNav: true,
-    group: 'sklad',
-  },
-  { href: '/clients', label: 'Клиенты', shortLabel: 'Клиенты', icon: IconUsers, roles: ['ceo'], group: 'sklad' },
   {
     href: '/warehouse/receiving',
     label: 'Приход',
@@ -173,13 +166,17 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['ceo', 'kladovshik'],
     group: 'sklad',
   },
+  { href: '/clients', label: 'Клиенты', shortLabel: 'Клиенты', icon: IconUsers, roles: ['ceo'], group: 'sklad' },
   {
+    // У CEO функция "Истории" (заказы по статусам: Ожидают/Выданы/
+    // Закрыты/Возвращено) теперь целиком внутри "Заказы" — тот же
+    // orders_view, фильтр по статусу там уже был на все статусы сразу.
+    // У кладовщика экран остаётся как был — свой отдельный пункт меню.
     href: '/warehouse/history',
     label: 'История',
     shortLabel: 'История',
     icon: IconHistory,
-    roles: ['ceo', 'kladovshik'],
-    group: 'sklad',
+    roles: ['kladovshik'],
   },
   {
     href: '/raw/receiving',
@@ -252,23 +249,6 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['master'],
   },
   {
-    href: '/warehouse/receiving-history',
-    label: 'История прихода',
-    shortLabel: 'Приход-история',
-    icon: IconReceiving,
-    roles: ['ceo'],
-    hideOnMobileNav: true,
-    group: 'sklad',
-  },
-  {
-    href: '/analytics',
-    label: 'Аналитика',
-    shortLabel: 'Аналитика',
-    icon: IconChart,
-    roles: ['ceo'],
-    group: 'sklad',
-  },
-  {
     href: '/control/zakroyshik',
     label: 'Сводка',
     shortLabel: 'Сводка',
@@ -293,6 +273,38 @@ export const NAV_ITEMS: NavItem[] = [
     group: 'tsekh',
   },
   {
+    href: '/control/tsekh/batches',
+    label: 'Партии',
+    shortLabel: 'Партии',
+    icon: IconScissors,
+    roles: ['ceo'],
+    group: 'tsekh',
+  },
+  {
+    href: '/control/tsekh/timesheet',
+    label: 'Табель',
+    shortLabel: 'Табель',
+    icon: IconCalendar,
+    roles: ['ceo'],
+    group: 'tsekh',
+  },
+  {
+    href: '/control/tsekh/piecework',
+    label: 'Сделка',
+    shortLabel: 'Сделка',
+    icon: IconCoins,
+    roles: ['ceo'],
+    group: 'tsekh',
+  },
+  {
+    href: '/control/tsekh/productivity',
+    label: 'Продуктивность',
+    shortLabel: 'Люди',
+    icon: IconUsers,
+    roles: ['ceo'],
+    group: 'tsekh',
+  },
+  {
     href: '/finance',
     label: 'Финансы',
     shortLabel: 'Финансы',
@@ -312,9 +324,9 @@ export const NAV_GROUPS: {
   icon: (props: { className?: string }) => JSX.Element;
   defaultHref: string;
 }[] = [
-  { key: 'zakroyshik', label: 'Контроль Закройщика', shortLabel: 'Закройщик', icon: IconScissors, defaultHref: '/control/zakroyshik' },
-  { key: 'sklad', label: 'Контроль Склада', shortLabel: 'Склад', icon: IconBox, defaultHref: '/orders' },
-  { key: 'tsekh', label: 'Контроль Цеха', shortLabel: 'Цех', icon: IconCheckCircle, defaultHref: '/control/tsekh' },
+  { key: 'zakroyshik', label: 'Контроль закройщика', shortLabel: 'Закройщик', icon: IconScissors, defaultHref: '/control/zakroyshik' },
+  { key: 'sklad', label: 'Контроль склада', shortLabel: 'Склад', icon: IconBox, defaultHref: '/analytics' },
+  { key: 'tsekh', label: 'Контроль цеха', shortLabel: 'Цех', icon: IconCheckCircle, defaultHref: '/control/tsekh' },
   { key: 'finance', label: 'Финансы', shortLabel: 'Финансы', icon: IconCoins, defaultHref: '/finance' },
 ];
 

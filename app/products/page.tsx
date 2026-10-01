@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { ProductVariant, WarehouseType, WAREHOUSE_TYPE_LABELS, sizeRank, stockStatus, variantLabel } from '@/lib/types';
 import { formatMoney } from '@/lib/format';
@@ -655,11 +656,18 @@ export default function ProductsPage() {
           </p>
         </div>
       ) : (
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Склад</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            {isCeo ? 'Каталог товаров, вариантов и остатки на складе' : 'Остатки товаров на складе'}
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Склад</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              {isCeo ? 'Каталог товаров, вариантов и остатки на складе' : 'Остатки товаров на складе'}
+            </p>
+          </div>
+          {isCeo && (
+            <Link href="/warehouse/receiving-history" className="text-xs font-medium text-indigo-600 hover:underline">
+              История прихода →
+            </Link>
+          )}
         </div>
       )}
 

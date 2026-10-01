@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useRole } from './RoleProvider';
 import { ROLE_LABELS } from '@/lib/types';
-import { NAV_ITEMS, NAV_GROUPS, isNavItemActive } from './navItems';
+import { NAV_ITEMS, NAV_GROUPS, isNavItemActive, isGroupActive } from './navItems';
 import type { NavItem } from './navItems';
 
 function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
@@ -29,11 +29,11 @@ export default function Sidebar() {
   const router = useRouter();
   const { role, email } = useRole();
 
+  // У CEO ровно 4 пункта — переходы на все остальные экраны живут
+  // внутри раздела вкладками сверху страницы (GroupTabBar), не в
+  // боковом меню. У остальных ролей пунктов мало, оставляем плоским
+  // списком, как было.
   const items = NAV_ITEMS.filter((item) => !role || item.roles.includes(role));
-  // У CEO пунктов много (~20) — группируем в 4 раздела с заголовками.
-  // У остальных ролей меню маленькое, оставляем плоским списком, как
-  // было.
-  const grouped = role === 'ceo';
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -52,22 +52,22 @@ export default function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
-        {grouped
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
+        {role === 'ceo'
           ? NAV_GROUPS.map((group) => {
-              const groupItems = items.filter((item) => item.group === group.key);
-              if (groupItems.length === 0) return null;
+              const active = isGroupActive(group.key, pathname);
+              const Icon = group.icon;
               return (
-                <div key={group.key}>
-                  <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    {group.label}
-                  </p>
-                  <div className="space-y-0.5">
-                    {groupItems.map((item) => (
-                      <NavLink key={item.href} item={item} pathname={pathname} />
-                    ))}
-                  </div>
-                </div>
+                <Link
+                  key={group.key}
+                  href={group.defaultHref}
+                  className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  }`}
+                >
+                  <Icon className={`h-4 w-4 ${active ? 'text-indigo-600' : 'text-slate-400'}`} />
+                  {group.label}
+                </Link>
               );
             })
           : items.map((item) => <NavLink key={item.href} item={item} pathname={pathname} />)}
