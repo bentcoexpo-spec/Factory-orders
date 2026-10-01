@@ -1204,12 +1204,22 @@ async function issueOrder(ctx: Ctx) {
 
   const productIdByVariant = new Map((stockRows ?? []).map((r: { id: string; product_id: string }) => [r.id, r.product_id]));
   const productIds = Array.from(new Set(Array.from(productIdByVariant.values())));
-  const { data: products } = await sb.from('products').select('id, price').in('id', productIds);
-  const priceByProduct = new Map((products ?? []).map((p: { id: string; price: number | null }) => [p.id, p.price ?? 0]));
+  // Одна функция в базе для подстановки цены (особая цена клиента, иначе
+  // цена товара, иначе null — "без цены") — та же, что и у create_order
+  // на веб-CEO/кладовщика, вместо собственного чтения products.price,
+  // как было раньше (третья, отдельная копия этой логики).
+  const priceByProduct = new Map<string, number | null>();
+  for (const productId of productIds) {
+    const { data: price } = await sb.rpc('resolve_item_price', {
+      p_client_id: draft.client_id,
+      p_product_id: productId,
+    });
+    priceByProduct.set(productId, (price as number | null) ?? null);
+  }
 
   const orderItems = draft.items.map((it) => {
     const productId = productIdByVariant.get(it.variantId);
-    return { order_id: order.id, variant_id: it.variantId, quantity: it.quantity, price: productId ? priceByProduct.get(productId) ?? 0 : 0 };
+    return { order_id: order.id, variant_id: it.variantId, quantity: it.quantity, price: productId ? priceByProduct.get(productId) ?? null : null };
   });
 
   const { error: itemsError } = await sb.from('order_items').insert(orderItems);
@@ -1427,7 +1437,7 @@ async function finalizeProduct(ctx: Ctx, draft: Draft) {
   if (!productId) {
     const { data: created, error } = await sb
       .from('products')
-      .insert({ name: ap.name, price: 0, warehouse_type: 'finished_goods' })
+      .insert({ name: ap.name, warehouse_type: 'finished_goods' })
       .select('id')
       .single();
     if (created) {
@@ -1884,7 +1894,7 @@ async function undoProductAdded(ctx: Ctx, a: BotAction): Promise<UndoResult> {
     if (error || !deleted || deleted.length === 0) return { ok: false, message: tr(ctx, 'undo.raced') };
     let productNote = '';
     if (a.created_product && a.product_id && (await productIsDisposable(sb, a.product_id, a.variant_id ?? ''))) {
-      const { error: productError } = await sb.from('products').delete().eq('id', a.product_id).eq('price', 0);
+      const { error: productError } = await sb.from('products').delete().eq('id', a.product_id).is('price', null);
       if (!productError) productNote = tr(ctx, 'undo.alsoProduct', { name: a.details?.productName ?? '' });
     }
     return { ok: true, message: tr(ctx, 'undo.doneNewVariant', { title, product: raw(productNote) }) };

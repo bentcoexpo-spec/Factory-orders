@@ -65,7 +65,6 @@ const emptyForm = (warehouseType: WarehouseType, productName = '') => ({
   print_type: '',
   sku: '',
   unit: 'шт',
-  price: '',
   stock_quantity: '',
   warehouse_type: warehouseType,
 });
@@ -158,7 +157,6 @@ export default function ProductsPage() {
       print_type: form.print_type.trim() || null,
       sku: form.sku.trim() || null,
       unit: form.unit.trim() || 'шт',
-      price: form.price === '' ? null : Number(form.price),
       stock_quantity: isKladovshik ? 0 : Number(form.stock_quantity) || 0,
       warehouse_type: form.warehouse_type,
     });
@@ -198,7 +196,6 @@ export default function ProductsPage() {
           print_type: form.print_type.trim() || null,
           sku: form.sku.trim() || null,
           unit: form.unit.trim() || 'шт',
-          price: isKladovshik ? null : form.price === '' ? null : Number(form.price),
           stock_quantity: isKladovshik ? 0 : cell.quantity,
           warehouse_type: form.warehouse_type,
         })
@@ -400,21 +397,10 @@ export default function ProductsPage() {
           </p>
         )}
 
-        {!isKladovshik && (
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-500">
-              Цена <span className="normal-case text-slate-400">(на весь товар)</span>
-            </span>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              inputMode="decimal"
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-              value={form.price}
-              onChange={(e) => setForm({ ...form, price: e.target.value })}
-            />
-          </label>
+        {isCeo && (
+          <p className="col-span-full text-xs text-slate-400 sm:col-span-2 lg:col-span-6">
+            Цена задаётся отдельно, в «Финансы → Цены» — новый товар появится там со статусом «без цены».
+          </p>
         )}
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-500">Артикул</span>
@@ -513,7 +499,9 @@ export default function ProductsPage() {
                   {isCeo && (
                     <div className="text-right">
                       <p className="mb-1 text-xs font-medium text-slate-500">Цена</p>
-                      <p className="text-sm font-medium text-slate-700">{formatMoney(v.price ?? 0)}</p>
+                      <p className={`text-sm font-medium ${v.price == null ? 'text-amber-600' : 'text-slate-700'}`}>
+                        {v.price == null ? 'без цены' : formatMoney(v.price)}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -552,7 +540,11 @@ export default function ProductsPage() {
                         <StockNote quantity={v.stock_quantity} />
                       </div>
                     </td>
-                    {isCeo && <td className="px-4 py-3 text-slate-600">{formatMoney(v.price ?? 0)}</td>}
+                    {isCeo && (
+                      <td className={`px-4 py-3 ${v.price == null ? 'text-amber-600' : 'text-slate-600'}`}>
+                        {v.price == null ? 'без цены' : formatMoney(v.price)}
+                      </td>
+                    )}
                     {(isCeo || isKladovshik) && (
                       <td className="px-4 py-3 text-right">
                         {canDelete(v) && (

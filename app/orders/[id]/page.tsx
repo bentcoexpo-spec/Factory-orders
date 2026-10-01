@@ -34,6 +34,8 @@ export default function OrderDetailPage() {
   const [showShortageDialog, setShowShortageDialog] = useState(false);
   const [resolvingShortage, setResolvingShortage] = useState(false);
   const [returning, setReturning] = useState(false);
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
+  const [savingPriceId, setSavingPriceId] = useState<string | null>(null);
 
   async function loadOrder() {
     setLoading(true);
@@ -104,6 +106,30 @@ export default function OrderDetailPage() {
     setReturning(false);
     if (error) setError(friendlyOrderReturnError(error.message));
     else loadOrder();
+  }
+
+  async function saveItemPrice(item: OrderItemView) {
+    const draft = priceDrafts[item.id];
+    if (draft === undefined || draft.trim() === '') return;
+    const value = Number(draft);
+    if (Number.isNaN(value) || value < 0) {
+      setError('Цена должна быть неотрицательным числом');
+      return;
+    }
+    setSavingPriceId(item.id);
+    setError(null);
+    const { error } = await supabase.from('order_items').update({ price: value }).eq('id', item.id);
+    setSavingPriceId(null);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setPriceDrafts((prev) => {
+      const next = { ...prev };
+      delete next[item.id];
+      return next;
+    });
+    loadOrder();
   }
 
   async function handleDelete() {
@@ -199,26 +225,52 @@ export default function OrderDetailPage() {
         {items.map((item) => {
           const label = variantLabel(item);
           const short = item.quantity > item.stock_quantity;
+          const unpriced = showTotal && item.price === null;
+          const draft = priceDrafts[item.id];
           return (
             <div
               key={item.id}
-              className={`rounded-lg border p-3 ${short ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}
+              className={`rounded-lg border p-3 ${
+                short ? 'border-red-300 bg-red-50' : unpriced ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'
+              }`}
             >
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-800">
                     {item.product_name}
                     {label && <span className="text-slate-400"> · {label}</span>}
                   </p>
                   <p className="text-xs text-slate-500">
                     {item.quantity} {item.product_unit}
-                    {showTotal && ` × ${formatMoney(item.price ?? 0)}`}
+                    {showTotal && item.price !== null && ` × ${formatMoney(item.price)}`}
                   </p>
                 </div>
-                {showTotal && (
-                  <p className="text-sm font-medium text-slate-700">{formatMoney((item.price ?? 0) * item.quantity)}</p>
+                {showTotal && item.price !== null && (
+                  <p className="shrink-0 text-sm font-medium text-slate-700">{formatMoney(item.price * item.quantity)}</p>
                 )}
               </div>
+              {unpriced && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="shrink-0 text-xs font-semibold text-amber-700">без цены —</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    placeholder="цена за шт"
+                    className="w-24 min-w-0 flex-1 rounded-md border border-amber-300 px-2 py-1.5 text-sm"
+                    value={draft ?? ''}
+                    onChange={(e) => setPriceDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                  />
+                  <button
+                    onClick={() => saveItemPrice(item)}
+                    disabled={savingPriceId === item.id || !draft || draft.trim() === ''}
+                    className="shrink-0 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                  >
+                    Сохранить
+                  </button>
+                </div>
+              )}
               {short && (
                 <p className="mt-1 text-xs font-semibold text-red-600">
                   Не хватает на складе — доступно только {item.stock_quantity}
@@ -228,9 +280,16 @@ export default function OrderDetailPage() {
           );
         })}
         {showTotal && (
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <p className="text-sm font-semibold text-slate-700">Итого</p>
-            <p className="text-sm font-semibold text-slate-900">{formatMoney(order.total ?? 0)}</p>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-slate-700">Итого</p>
+              <p className="text-sm font-semibold text-slate-900">{formatMoney(order.total ?? 0)}</p>
+            </div>
+            {order.has_unpriced_item && (
+              <p className="mt-1 text-xs font-medium text-amber-700">
+                Есть позиции без цены — в итог они пока не входят, впишите цену выше.
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -250,8 +309,10 @@ export default function OrderDetailPage() {
             {items.map((item) => {
               const label = variantLabel(item);
               const short = item.quantity > item.stock_quantity;
+              const unpriced = showTotal && item.price === null;
+              const draft = priceDrafts[item.id];
               return (
-                <tr key={item.id} className={short ? 'bg-red-50' : undefined}>
+                <tr key={item.id} className={short ? 'bg-red-50' : unpriced ? 'bg-amber-50' : undefined}>
                   <td className="px-4 py-3 font-medium text-slate-800">
                     {item.product_name}
                     {label && <span className="text-slate-400"> · {label}</span>}
@@ -264,9 +325,37 @@ export default function OrderDetailPage() {
                   <td className="px-4 py-3 text-slate-600">
                     {item.quantity} {item.product_unit}
                   </td>
-                  {showTotal && <td className="px-4 py-3 text-slate-600">{formatMoney(item.price ?? 0)}</td>}
                   {showTotal && (
-                    <td className="px-4 py-3 text-slate-600">{formatMoney((item.price ?? 0) * item.quantity)}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {item.price !== null ? (
+                        formatMoney(item.price)
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            inputMode="decimal"
+                            placeholder="без цены"
+                            className="w-24 rounded-md border border-amber-300 px-2 py-1 text-sm"
+                            value={draft ?? ''}
+                            onChange={(e) => setPriceDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                          />
+                          <button
+                            onClick={() => saveItemPrice(item)}
+                            disabled={savingPriceId === item.id || !draft || draft.trim() === ''}
+                            className="rounded-md bg-amber-600 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+                          >
+                            Сохранить
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  )}
+                  {showTotal && (
+                    <td className="px-4 py-3 text-slate-600">
+                      {item.price !== null ? formatMoney(item.price * item.quantity) : '—'}
+                    </td>
                   )}
                 </tr>
               );
@@ -278,7 +367,12 @@ export default function OrderDetailPage() {
                 <td colSpan={3} className="px-4 py-3 text-right text-sm font-semibold text-slate-700">
                   Итого
                 </td>
-                <td className="px-4 py-3 text-sm font-semibold text-slate-900">{formatMoney(order.total ?? 0)}</td>
+                <td className="px-4 py-3 text-sm font-semibold text-slate-900">
+                  {formatMoney(order.total ?? 0)}
+                  {order.has_unpriced_item && (
+                    <span className="ml-2 text-xs font-medium text-amber-700">без цены не включено</span>
+                  )}
+                </td>
               </tr>
             </tfoot>
           )}

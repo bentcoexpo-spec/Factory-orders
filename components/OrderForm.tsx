@@ -13,7 +13,6 @@ interface LineItem {
   key: string;
   variant: ProductVariant;
   quantity: number;
-  price: number;
 }
 
 function StockBadge({ quantity }: { quantity: number }) {
@@ -76,6 +75,43 @@ export default function OrderForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Цена подставляется автоматически (особая цена клиента, иначе цена
+  // товара, иначе «без цены») — одна и та же функция в базе, что и у
+  // create_order при самом создании заказа; здесь только предпросмотр
+  // для CEO, пересчитывается при смене клиента/состава заказа.
+  const [priceByProduct, setPriceByProduct] = useState<Map<string, number | null>>(new Map());
+  const productIdsKey = Array.from(new Set(items.map((it) => it.variant.product_id))).sort().join(',');
+
+  useEffect(() => {
+    if (!isCeo || !client || !productIdsKey) {
+      setPriceByProduct(new Map());
+      return;
+    }
+    let cancelled = false;
+    async function loadPrices() {
+      const productIds = productIdsKey.split(',');
+      const entries = await Promise.all(
+        productIds.map(async (productId) => {
+          const { data } = await supabase.rpc('resolve_item_price', {
+            p_client_id: client!.id,
+            p_product_id: productId,
+          });
+          return [productId, (data as number | null) ?? null] as const;
+        })
+      );
+      if (!cancelled) setPriceByProduct(new Map(entries));
+    }
+    loadPrices();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCeo, client, productIdsKey]);
+
+  function priceFor(variant: ProductVariant): number | null {
+    return priceByProduct.get(variant.product_id) ?? null;
+  }
+
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const q = productQuery.trim();
@@ -106,7 +142,7 @@ export default function OrderForm({
       if (existing) {
         return prev.map((it) => (it.variant.id === variant.id ? { ...it, quantity: it.quantity + 1 } : it));
       }
-      return [...prev, { key: variant.id, variant, quantity: 1, price: variant.price ?? 0 }];
+      return [...prev, { key: variant.id, variant, quantity: 1 }];
     });
     setProductQuery('');
     setResults([]);
@@ -121,7 +157,7 @@ export default function OrderForm({
         if (idx >= 0) {
           next[idx] = { ...next[idx], quantity: next[idx].quantity + quantity };
         } else {
-          next.push({ key: variant.id, variant, quantity, price: variant.price ?? 0 });
+          next.push({ key: variant.id, variant, quantity });
         }
       }
       return next;
@@ -134,10 +170,6 @@ export default function OrderForm({
 
   function updateQuantity(key: string, quantity: number) {
     setItems((prev) => prev.map((it) => (it.key === key ? { ...it, quantity } : it)));
-  }
-
-  function updatePrice(key: string, price: number) {
-    setItems((prev) => prev.map((it) => (it.key === key ? { ...it, price } : it)));
   }
 
   function removeItem(key: string) {
@@ -170,7 +202,8 @@ export default function OrderForm({
     setNewVariant(emptyNewVariantForm());
   }
 
-  const total = items.reduce((sum, it) => sum + it.quantity * it.price, 0);
+  const total = items.reduce((sum, it) => sum + it.quantity * (priceFor(it.variant) ?? 0), 0);
+  const hasUnpricedItem = items.some((it) => priceFor(it.variant) == null);
 
   const groupedResults = Array.from(
     results.reduce((map, v) => {
@@ -199,12 +232,10 @@ export default function OrderForm({
     // create_order) — либо всё, либо ничего. Раньше это были два
     // отдельных запроса с клиента, и сбой между ними мог оставить в базе
     // заказ на ноль позиций — причём кладовщик не может даже сам его
-    // удалить (это умеет только CEO).
-    const payload = items.map((it) =>
-      isCeo
-        ? { variant_id: it.variant.id, quantity: it.quantity, price: it.price }
-        : { variant_id: it.variant.id, quantity: it.quantity }
-    );
+    // удалить (это умеет только CEO). Цену клиент не передаёт вообще —
+    // create_order сам подставляет её (особая цена клиента, иначе цена
+    // товара), цена на экране — только предпросмотр для CEO.
+    const payload = items.map((it) => ({ variant_id: it.variant.id, quantity: it.quantity }));
 
     const { data: orderId, error: orderError } = await supabase.rpc('create_order', {
       p_client_id: client.id,
@@ -400,6 +431,7 @@ export default function OrderForm({
             {items.map((it) => {
               const label = variantLabel(it.variant);
               const overStock = it.quantity > it.variant.stock_quantity;
+              const price = priceFor(it.variant);
               return (
                 <div
                   key={it.key}
@@ -424,36 +456,20 @@ export default function OrderForm({
                     </button>
                   </div>
 
-                  <div className={`grid gap-2 ${isCeo ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-medium text-slate-500">Количество</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step="1"
-                        inputMode="numeric"
-                        className={`w-full rounded-md border px-3 py-2.5 text-base ${
-                          overStock ? 'border-red-400 text-red-600' : 'border-slate-300'
-                        }`}
-                        value={it.quantity}
-                        onChange={(e) => updateQuantity(it.key, Number(e.target.value))}
-                      />
-                    </label>
-                    {isCeo && (
-                      <label className="block">
-                        <span className="mb-1 block text-xs font-medium text-slate-500">Цена за ед.</span>
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          inputMode="decimal"
-                          className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-                          value={it.price}
-                          onChange={(e) => updatePrice(it.key, Number(e.target.value))}
-                        />
-                      </label>
-                    )}
-                  </div>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">Количество</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="1"
+                      inputMode="numeric"
+                      className={`w-full rounded-md border px-3 py-2.5 text-base ${
+                        overStock ? 'border-red-400 text-red-600' : 'border-slate-300'
+                      }`}
+                      value={it.quantity}
+                      onChange={(e) => updateQuantity(it.key, Number(e.target.value))}
+                    />
+                  </label>
 
                   {overStock && (
                     <p className="text-sm font-semibold text-red-600">
@@ -462,11 +478,17 @@ export default function OrderForm({
                   )}
 
                   {isCeo && (
-                    <div className="flex items-center justify-between border-t border-slate-100 pt-2">
-                      <span className="text-xs text-slate-500">Сумма по позиции</span>
-                      <span className="text-sm font-semibold text-slate-800">
-                        {formatMoney(it.quantity * it.price)}
+                    <div className="flex items-center justify-between border-t border-slate-100 pt-2 text-sm">
+                      <span className="text-xs text-slate-500">
+                        {price != null ? `${formatMoney(price)} × ${it.quantity}` : 'Цена не задана'}
                       </span>
+                      {price != null ? (
+                        <span className="font-semibold text-slate-800">{formatMoney(it.quantity * price)}</span>
+                      ) : (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                          без цены
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -475,9 +497,16 @@ export default function OrderForm({
           </div>
 
           {isCeo && items.length > 0 && (
-            <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
-              <span className="text-sm text-slate-500">Итого:</span>
-              <span className="text-lg font-semibold text-slate-900">{formatMoney(total)}</span>
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              {hasUnpricedItem && (
+                <p className="mb-2 text-xs text-amber-600">
+                  У части позиций нет цены — задайте её в «Финансы → Цены», сумма ниже без них.
+                </p>
+              )}
+              <div className="flex items-center justify-end gap-2">
+                <span className="text-sm text-slate-500">Итого:</span>
+                <span className="text-lg font-semibold text-slate-900">{formatMoney(total)}</span>
+              </div>
             </div>
           )}
         </div>

@@ -305,10 +305,26 @@ export const NAV_ITEMS: NavItem[] = [
     group: 'tsekh',
   },
   {
-    href: '/finance',
-    label: 'Финансы',
-    shortLabel: 'Финансы',
+    href: '/finance/prices',
+    label: 'Цены',
+    shortLabel: 'Цены',
     icon: IconCoins,
+    roles: ['ceo'],
+    group: 'finance',
+  },
+  {
+    href: '/finance/receipts',
+    label: 'Чеки',
+    shortLabel: 'Чеки',
+    icon: IconReceiving,
+    roles: ['ceo'],
+    group: 'finance',
+  },
+  {
+    href: '/finance',
+    label: 'Долги',
+    shortLabel: 'Долги',
+    icon: IconWarning,
     roles: ['ceo'],
     group: 'finance',
   },
@@ -335,6 +351,13 @@ export const MOBILE_NAV_ITEMS: NavItem[] = NAV_ITEMS.filter((item) => !item.hide
 export function isNavItemActive(href: string, pathname: string) {
   if (href === '/orders') {
     return pathname === '/orders' || (pathname.startsWith('/orders/') && pathname !== '/orders/new');
+  }
+  if (href === '/finance') {
+    // '/finance/prices' и '/finance/receipts' — отдельные пункты меню
+    // (свои вкладки), а не вложенные страницы "Долгов": без этого
+    // исключения общий startsWith ниже подсвечивал бы и "Долги" тоже,
+    // раз их путь тоже начинается с "/finance/".
+    return pathname === '/finance' || pathname.startsWith('/finance/clients');
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }

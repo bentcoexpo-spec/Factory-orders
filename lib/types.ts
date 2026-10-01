@@ -79,6 +79,31 @@ export interface ClientPayment {
   created_at: string;
 }
 
+// Товар без разбивки по вариантам — ровно одна цена на товар
+// (036_pricing_and_receipts.sql). price = null значит "цена не задана"
+// (раньше были неразличимы с ценой 0).
+export interface Product {
+  id: string;
+  name: string;
+  price: number | null;
+  warehouse_type: WarehouseType;
+}
+
+// Ряд из client_product_prices_view — особая цена конкретного клиента на
+// конкретный товар, если обычная цена товара ему не подходит.
+export interface ClientProductPrice {
+  id: string;
+  client_id: string;
+  client_name: string;
+  product_id: string;
+  product_name: string;
+  price: number;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
 export type WarehouseType = 'production' | 'finished_goods';
 
 export const WAREHOUSE_TYPE_LABELS: Record<WarehouseType, string> = {
@@ -192,6 +217,9 @@ export interface OrderView {
   // только CEO, у кладовщика оба поля всегда null (032_order_returns.sql).
   returned_at: string | null;
   returned_by_email: string | null;
+  // Есть ли среди позиций заказа хоть одна без цены — видно только CEO
+  // (036_pricing_and_receipts.sql).
+  has_unpriced_item: boolean | null;
 }
 
 // Ряд из stock_receipts_view — запись в истории поступлений.
