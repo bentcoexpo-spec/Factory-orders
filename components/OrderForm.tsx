@@ -92,7 +92,7 @@ export default function OrderForm({
       const productIds = productIdsKey.split(',');
       const entries = await Promise.all(
         productIds.map(async (productId) => {
-          const { data } = await supabase.rpc('resolve_item_price', {
+          const { data } = await supabase.rpc('preview_item_price', {
             p_client_id: client!.id,
             p_product_id: productId,
           });

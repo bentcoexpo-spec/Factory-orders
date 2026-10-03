@@ -320,10 +320,10 @@ export const NAV_ITEMS: NavItem[] = [
     group: 'tsekh',
   },
   {
-    href: '/finance/prices',
-    label: 'Цены',
-    shortLabel: 'Цены',
-    icon: IconCoins,
+    href: '/finance/summary',
+    label: 'Сводка',
+    shortLabel: 'Сводка',
+    icon: IconChart,
     roles: ['ceo'],
     group: 'finance',
   },
@@ -336,10 +336,34 @@ export const NAV_ITEMS: NavItem[] = [
     group: 'finance',
   },
   {
+    href: '/finance/payments',
+    label: 'Оплаты',
+    shortLabel: 'Оплаты',
+    icon: IconCoins,
+    roles: ['ceo'],
+    group: 'finance',
+  },
+  {
+    href: '/finance/expenses',
+    label: 'Расходы',
+    shortLabel: 'Расходы',
+    icon: IconOutgoing,
+    roles: ['ceo'],
+    group: 'finance',
+  },
+  {
     href: '/finance',
     label: 'Долги',
     shortLabel: 'Долги',
     icon: IconWarning,
+    roles: ['ceo'],
+    group: 'finance',
+  },
+  {
+    href: '/finance/prices',
+    label: 'Цены',
+    shortLabel: 'Цены',
+    icon: IconCoins,
     roles: ['ceo'],
     group: 'finance',
   },
@@ -358,7 +382,7 @@ export const NAV_GROUPS: {
   { key: 'zakroyshik', label: 'Контроль закройщика', shortLabel: 'Закройщик', icon: IconScissors, defaultHref: '/control/zakroyshik' },
   { key: 'sklad', label: 'Контроль склада', shortLabel: 'Склад', icon: IconBox, defaultHref: '/analytics' },
   { key: 'tsekh', label: 'Контроль цеха', shortLabel: 'Цех', icon: IconCheckCircle, defaultHref: '/control/tsekh' },
-  { key: 'finance', label: 'Финансы', shortLabel: 'Финансы', icon: IconCoins, defaultHref: '/finance' },
+  { key: 'finance', label: 'Финансы', shortLabel: 'Финансы', icon: IconCoins, defaultHref: '/finance/summary' },
 ];
 
 export const MOBILE_NAV_ITEMS: NavItem[] = NAV_ITEMS.filter((item) => !item.hideOnMobileNav);

@@ -1,0 +1,8 @@
+{
+  "name": "factory-orders-sql-tests",
+  "private": true,
+  "type": "module",
+  "description": "Регрессионные тесты миграций на PGlite (Postgres в WASM, без доступа к Supabase)",
+  "scripts": { "test": "node run_all.mjs" },
+  "dependencies": { "@electric-sql/pglite": "^0.2.17" }
+}

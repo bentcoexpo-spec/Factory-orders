@@ -6,6 +6,7 @@ import { Client, ClientProductPrice, Product } from '@/lib/types';
 import { formatDate, formatMoney } from '@/lib/format';
 import RequireRole from '@/components/RequireRole';
 import ClientPicker from '@/components/ClientPicker';
+import { useFinanceFilters } from '@/components/FinanceFilters';
 
 function ProductPicker({
   value,
@@ -194,7 +195,9 @@ function StandardPrices() {
 }
 
 function SpecialPrices() {
+  const { market } = useFinanceFilters();
   const [list, setList] = useState<ClientProductPrice[]>([]);
+  const [categories, setCategories] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -205,12 +208,17 @@ function SpecialPrices() {
 
   async function load() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('client_product_prices_view')
-      .select('*')
-      .order('updated_at', { ascending: false });
+    const [{ data, error }, { data: clientRows }] = await Promise.all([
+      supabase.from('client_product_prices_view').select('*').order('updated_at', { ascending: false }),
+      supabase.from('clients').select('id, category'),
+    ]);
     if (error) setError(error.message);
     else setList((data as unknown as ClientProductPrice[]) ?? []);
+    const map: Record<string, string | null> = {};
+    ((clientRows as unknown as { id: string; category: string | null }[]) ?? []).forEach((c) => {
+      map[c.id] = c.category;
+    });
+    setCategories(map);
     setLoading(false);
   }
 
@@ -255,6 +263,8 @@ function SpecialPrices() {
     else load();
   }
 
+  const visibleList = market === 'all' ? list : list.filter((row) => categories[row.client_id] === market);
+
   return (
     <div className="space-y-4">
       <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
@@ -293,11 +303,15 @@ function SpecialPrices() {
       </div>
 
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
-      {!loading && list.length === 0 && <p className="text-sm text-slate-400">Особых цен пока нет</p>}
+      {!loading && visibleList.length === 0 && (
+        <p className="text-sm text-slate-400">
+          {list.length === 0 ? 'Особых цен пока нет' : 'Для выбранного рынка особых цен нет'}
+        </p>
+      )}
 
-      {!loading && list.length > 0 && (
+      {!loading && visibleList.length > 0 && (
         <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white">
-          {list.map((row) => (
+          {visibleList.map((row) => (
             <div key={row.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-slate-800">

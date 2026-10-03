@@ -34,3 +34,6 @@ yarn-error.log*
 
 # local dev artifacts
 dev-server.log
+
+# SQL-тесты (PGlite)
+/supabase/tests/node_modules

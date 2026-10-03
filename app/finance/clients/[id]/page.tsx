@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
@@ -8,6 +8,8 @@ import { CLIENT_CATEGORY_LABELS, Client, ClientDebt, ClientPayment, OrderView } 
 import { formatDate, formatMoney } from '@/lib/format';
 import StatusBadge from '@/components/StatusBadge';
 import RequireRole from '@/components/RequireRole';
+import PaymentForm from '@/components/PaymentForm';
+import PaymentRow from '@/components/PaymentRow';
 
 function ClientDetailContent() {
   const params = useParams<{ id: string }>();
@@ -18,12 +20,10 @@ function ClientDetailContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [amount, setAmount] = useState('');
-  const [comment, setComment] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [loadedOnce, setLoadedOnce] = useState(false);
 
   async function load() {
-    setLoading(true);
+    if (!loadedOnce) setLoading(true);
     const [{ data: clientData, error: clientError }, { data: debtData }, { data: orderData }, { data: paymentData }] =
       await Promise.all([
         supabase.from('clients').select('*').eq('id', params.id).single(),
@@ -33,6 +33,7 @@ function ClientDetailContent() {
           .from('client_payments_view')
           .select('*')
           .eq('client_id', params.id)
+          .order('paid_at', { ascending: false })
           .order('created_at', { ascending: false }),
       ]);
     if (clientError) setError(clientError.message);
@@ -43,43 +44,13 @@ function ClientDetailContent() {
       setPayments((paymentData as unknown as ClientPayment[]) ?? []);
     }
     setLoading(false);
+    setLoadedOnce(true);
   }
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
-
-  async function handleAddPayment(e: FormEvent) {
-    e.preventDefault();
-    const value = Number(amount);
-    if (!value || value <= 0) {
-      setError('Укажите сумму оплаты больше нуля');
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    const { error } = await supabase.from('client_payments_view').insert({
-      client_id: params.id,
-      amount: value,
-      comment: comment.trim() || null,
-    });
-    setSaving(false);
-    if (error) {
-      setError(error.message);
-      return;
-    }
-    setAmount('');
-    setComment('');
-    load();
-  }
-
-  async function handleDeletePayment(id: string) {
-    if (!confirm('Удалить запись об оплате?')) return;
-    const { error } = await supabase.from('client_payments_view').delete().eq('id', id);
-    if (error) setError(error.message);
-    else load();
-  }
 
   if (loading) return <p className="text-sm text-slate-400">Загрузка…</p>;
   if (!client) return <p className="text-sm text-red-600">{error ?? 'Клиент не найден'}</p>;
@@ -88,7 +59,7 @@ function ClientDetailContent() {
     <div className="space-y-6">
       <div>
         <Link href="/finance" className="text-xs font-medium text-indigo-600 hover:underline">
-          ← Финансы
+          ← Долги
         </Link>
         <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">{client.name}</h1>
@@ -116,68 +87,21 @@ function ClientDetailContent() {
           <p className="mt-1 text-lg font-semibold text-slate-900">{formatMoney(debt?.paid_total ?? 0)}</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <p className="text-xs uppercase text-slate-500">Долг</p>
+          <p className="text-xs uppercase text-slate-500">{(debt?.debt ?? 0) < 0 ? 'Аванс' : 'Долг'}</p>
           <p className={`mt-1 text-lg font-semibold ${(debt?.debt ?? 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
-            {formatMoney(debt?.debt ?? 0)}
+            {formatMoney(Math.abs(debt?.debt ?? 0))}
           </p>
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">Внести оплату</h2>
-        <form onSubmit={handleAddPayment} className="grid gap-3 sm:grid-cols-3">
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Сумма *</span>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              inputMode="decimal"
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-          </label>
-          <label className="block text-sm sm:col-span-1">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Комментарий</span>
-            <input
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
-              placeholder="наличные, перевод…"
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={saving}
-            className="self-end rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {saving ? 'Сохранение…' : 'Внести оплату'}
-          </button>
-        </form>
-      </div>
+      <PaymentForm fixedClient={{ id: client.id, name: client.name }} onSaved={load} />
 
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-slate-700">История оплат</h2>
         {payments.length === 0 && <p className="text-sm text-slate-400">Оплат пока не было</p>}
         <div className="divide-y divide-slate-100">
           {payments.map((p) => (
-            <div key={p.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-              <div className="min-w-0">
-                <p className="font-medium text-slate-800">{formatMoney(p.amount)}</p>
-                <p className="text-xs text-slate-400">
-                  {formatDate(p.created_at)}
-                  {p.created_by_email && ` · ${p.created_by_email}`}
-                  {p.comment && ` · ${p.comment}`}
-                </p>
-              </div>
-              <button
-                onClick={() => handleDeletePayment(p.id)}
-                className="shrink-0 text-xs font-medium text-red-600 hover:underline"
-              >
-                Удалить
-              </button>
-            </div>
+            <PaymentRow key={p.id} payment={p} showClient={false} onChanged={load} />
           ))}
         </div>
       </div>

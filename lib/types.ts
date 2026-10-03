@@ -68,7 +68,8 @@ export interface ClientDebt {
 }
 
 // Ряд из client_payments_view — одна оплата клиента на общий счёт, не
-// привязанная к конкретному заказу.
+// привязанная к конкретному заказу. paid_at — дата оплаты (вводится
+// вручную, 'YYYY-MM-DD'); created_at — настоящее время ввода записи.
 export interface ClientPayment {
   id: string;
   client_id: string;
@@ -77,6 +78,108 @@ export interface ClientPayment {
   created_by: string | null;
   created_by_email: string | null;
   created_at: string;
+  paid_at: string;
+  updated_at: string | null;
+  client_name: string;
+  client_category: ClientCategory | null;
+  photo_count: number;
+}
+
+// Переключатель рынка на всех вкладках «Финансов». У клиента рынок —
+// его category; у расхода — собственная метка market ('general' виден
+// только при «Все»).
+export type FinanceMarket = 'all' | 'local' | 'expo';
+
+export const FINANCE_MARKET_LABELS: Record<FinanceMarket, string> = {
+  all: 'Все',
+  local: 'Внутренний рынок',
+  expo: 'Экспорт',
+};
+
+export type ExpenseMarket = 'general' | 'local' | 'expo';
+
+export const EXPENSE_MARKET_LABELS: Record<ExpenseMarket, string> = {
+  general: 'Общий',
+  local: 'Внутренний рынок',
+  expo: 'Экспорт',
+};
+
+export type ExpensePaymentKind = 'paid' | 'credit';
+
+export const EXPENSE_KIND_LABELS: Record<ExpensePaymentKind, string> = {
+  paid: 'Оплатили',
+  credit: 'Взяли в долг',
+};
+
+// Ряд из expenses_view. debt_left — остаток долга (0 у «Оплатили»).
+export interface Expense {
+  id: string;
+  title: string;
+  amount: number;
+  spent_at: string;
+  payment_kind: ExpensePaymentKind;
+  supplier: string | null;
+  market: ExpenseMarket;
+  comment: string | null;
+  repaid_total: number;
+  debt_left: number;
+  created_by: string | null;
+  created_by_email: string | null;
+  created_at: string;
+  updated_at: string | null;
+  photo_count: number;
+}
+
+export interface ExpenseRepayment {
+  id: string;
+  expense_id: string;
+  amount: number;
+  paid_at: string;
+  comment: string | null;
+  created_at: string;
+}
+
+// Ряд из finance_receipts_view / finance_receipt_items_view — чек
+// (выданный/возвращённый заказ) с категорией клиента.
+export interface FinanceReceipt {
+  id: string;
+  client_id: string;
+  client_name: string;
+  client_category: ClientCategory | null;
+  status: 'issued' | 'returned';
+  issued_at: string | null;
+  returned_at: string | null;
+  total: number | null;
+  has_unpriced_item: boolean;
+}
+
+export interface FinanceReceiptItem {
+  id: string;
+  order_id: string;
+  client_id: string;
+  client_name: string;
+  client_category: ClientCategory | null;
+  status: 'issued' | 'returned';
+  issued_at: string | null;
+  product_name: string;
+  color: string | null;
+  size: string | null;
+  unit: string | null;
+  quantity: number;
+  price: number | null;
+  line_total: number | null;
+}
+
+// Ответ finance_summary (038_finance_payments_expenses.sql).
+export interface FinanceSummary {
+  sold: number;
+  received: number;
+  spent: number;
+  left: number;
+  owed_to_us: number;
+  we_owe: number;
+  months: { month: string; sold: number; received: number; spent: number }[];
+  top_debtors: { id: string; name: string; debt: number }[];
 }
 
 // Товар без разбивки по вариантам — ровно одна цена на товар
