@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { CuttingBatch, RawMaterialIssue, SHOP_LABELS, Shop, sizeRank } from '@/lib/types';
+import { CuttingBatch, CuttingRequest, RawMaterialIssue, SHOP_LABELS, Shop, sizeRank } from '@/lib/types';
 import { formatDate } from '@/lib/format';
 import RequireRole from '@/components/RequireRole';
 
@@ -30,6 +30,8 @@ function BatchForm() {
   const [selectedIssue, setSelectedIssue] = useState<RawMaterialIssue | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
   const [products, setProducts] = useState<DraftProduct[]>([]);
+  const [openRequests, setOpenRequests] = useState<CuttingRequest[]>([]);
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
 
   const [productName, setProductName] = useState('');
   const [rows, setRows] = useState<SizeRow[]>(emptyRows());
@@ -67,10 +69,20 @@ function BatchForm() {
     setProductNameSuggestions(names.sort((a, b) => a.localeCompare(b)));
   }
 
+  async function loadOpenRequests() {
+    const { data } = await supabase
+      .from('cutting_requests_view')
+      .select('*')
+      .in('status', ['new', 'in_progress'])
+      .order('created_at', { ascending: false });
+    setOpenRequests((data as unknown as CuttingRequest[]) ?? []);
+  }
+
   useEffect(() => {
     loadPending();
     loadRecent();
     loadProductNameSuggestions();
+    loadOpenRequests();
   }, []);
 
   function selectIssue(issue: RawMaterialIssue) {
@@ -79,6 +91,7 @@ function BatchForm() {
     setProducts([]);
     setProductName('');
     setRows(emptyRows());
+    setSelectedRequestId(null);
     setSuccess(null);
     setError(null);
   }
@@ -89,6 +102,7 @@ function BatchForm() {
     setProducts([]);
     setProductName('');
     setRows(emptyRows());
+    setSelectedRequestId(null);
   }
 
   function updateRow(index: number, patch: Partial<SizeRow>) {
@@ -167,6 +181,7 @@ function BatchForm() {
           sizes: p.rows.map((r) => ({ size: r.size, quantity: r.quantity })),
         })),
         p_shop: shop,
+        p_request_id: selectedRequestId,
       });
       if (batchError || !data?.[0]) throw new Error(batchError?.message ?? 'Не удалось создать партию');
 
@@ -178,6 +193,7 @@ function BatchForm() {
       loadPending();
       loadRecent();
       loadProductNameSuggestions();
+      loadOpenRequests();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -268,6 +284,46 @@ function BatchForm() {
               ))}
             </div>
           </div>
+
+          {openRequests.length > 0 && (
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <h2 className="mb-3 text-sm font-semibold text-slate-700">По какой заявке кроите? (по желанию)</h2>
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRequestId(null)}
+                  className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left text-sm ${
+                    selectedRequestId === null
+                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                      : 'border-slate-200 bg-white text-slate-600'
+                  }`}
+                >
+                  Без привязки к заявке
+                </button>
+                {openRequests.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setSelectedRequestId(r.id)}
+                    className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left text-sm ${
+                      selectedRequestId === r.id
+                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                        : 'border-slate-200 bg-white text-slate-600'
+                    }`}
+                  >
+                    <span>
+                      <span className="font-medium">
+                        {r.material_name} · {r.color}
+                      </span>
+                      <span className="block text-xs text-slate-400">
+                        {r.products.map((p) => p.product_name).join(', ')}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {products.length > 0 && (
             <div className="space-y-2">
@@ -392,6 +448,7 @@ function BatchForm() {
                 </div>
                 <p className="text-xs text-slate-400">
                   {formatDate(b.created_at)} · {SHOP_LABELS[b.shop]}
+                  {b.request_id && <span className="text-indigo-500"> · по заявке</span>}
                 </p>
                 <div className="mt-1 space-y-0.5">
                   {b.products.map((p, i) => (

@@ -377,6 +377,9 @@ export interface CuttingBatch {
   sewn_by: string | null;
   sewn_at: string | null;
   shop: Shop;
+  // Заявка, по которой кроили (этап 3 «Заявка закройщику») — null,
+  // если партия раскроена без привязки к заявке, как и раньше.
+  request_id: string | null;
 }
 
 export const CUTTING_BATCH_STATUS_LABELS: Record<CuttingBatchStatus, string> = {
@@ -384,6 +387,52 @@ export const CUTTING_BATCH_STATUS_LABELS: Record<CuttingBatchStatus, string> = {
   in_sewing: 'В пошиве',
   sewn: 'Пошито, ожидает склад',
 };
+
+// Заявка закройщику (cutting_requests_view): что CEO просит раскроить —
+// материал/цвет (как у выдачи "Взять для цеха"), план по товарам/
+// размерам и факт — сумма того, что уже вышло из привязанных партий
+// (по названию товара, без разбивки по размеру — закройщик не обязан
+// кроить размеры ровно так, как запланировано).
+export type CuttingRequestStatus = 'new' | 'in_progress' | 'done' | 'cancelled';
+
+export const CUTTING_REQUEST_STATUS_LABELS: Record<CuttingRequestStatus, string> = {
+  new: 'Новая',
+  in_progress: 'В работе',
+  done: 'Выполнена',
+  cancelled: 'Отменена',
+};
+
+// size === null значит "без разбивки по размерам" — просто общее
+// количество для этого товара.
+export interface CuttingRequestSize {
+  size: string | null;
+  quantity: number;
+}
+
+export interface CuttingRequestProduct {
+  product_name: string;
+  plan_total: number;
+  fact_total: number;
+  sizes: CuttingRequestSize[];
+}
+
+export interface CuttingRequest {
+  id: string;
+  color_id: string;
+  material_name: string;
+  color: string;
+  rolls_hint: number | null;
+  comment: string | null;
+  status: CuttingRequestStatus;
+  products: CuttingRequestProduct[];
+  plan_total: number;
+  fact_total: number;
+  created_by: string | null;
+  created_by_email: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+}
 
 // Ряд из cutting_batch_items_view — одна размерная строка партии.
 // batch_product_id/size/quantity — заявка закройщика (не редактируется

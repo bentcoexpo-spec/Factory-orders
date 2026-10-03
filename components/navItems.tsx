@@ -179,6 +179,13 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['kladovshik'],
   },
   {
+    href: '/raw/requests',
+    label: 'Заявки',
+    shortLabel: 'Заявки',
+    icon: IconOutgoing,
+    roles: ['zakroyshik'],
+  },
+  {
     href: '/raw/receiving',
     label: 'Приход',
     shortLabel: 'Приход',
@@ -247,6 +254,14 @@ export const NAV_ITEMS: NavItem[] = [
     shortLabel: 'Люди',
     icon: IconChart,
     roles: ['master'],
+  },
+  {
+    href: '/control/zakroyshik/requests',
+    label: 'Заявка',
+    shortLabel: 'Заявка',
+    icon: IconOutgoing,
+    roles: ['ceo'],
+    group: 'zakroyshik',
   },
   {
     href: '/control/zakroyshik',
@@ -358,6 +373,11 @@ export function isNavItemActive(href: string, pathname: string) {
     // исключения общий startsWith ниже подсвечивал бы и "Долги" тоже,
     // раз их путь тоже начинается с "/finance/".
     return pathname === '/finance' || pathname.startsWith('/finance/clients');
+  }
+  if (href === '/control/zakroyshik') {
+    // '/control/zakroyshik/requests' — отдельная вкладка "Заявка", не
+    // вложенная страница "Сводки" (детальных подстраниц у Сводки нет).
+    return pathname === '/control/zakroyshik';
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
