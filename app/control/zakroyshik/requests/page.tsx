@@ -16,9 +16,9 @@ function IconChevronLeft() {
 
 const STATUS_BADGE: Record<CuttingRequestStatus, string> = {
   new: 'bg-slate-100 text-slate-600',
-  in_progress: 'bg-indigo-100 text-indigo-700',
-  done: 'bg-green-100 text-green-700',
-  cancelled: 'bg-red-100 text-red-600',
+  in_progress: 'bg-accent-100 text-accent-700',
+  done: 'bg-success-100 text-success-700',
+  cancelled: 'bg-danger-100 text-danger-600',
 };
 
 interface SizeRow {
@@ -274,21 +274,21 @@ function RequestsContent() {
         </p>
       </div>
 
-      {loadError && <p className="text-sm text-red-600">{loadError}</p>}
+      {loadError && <p className="text-sm text-danger-600">{loadError}</p>}
 
-      <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
+      <div className="space-y-4 card">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-700">
             {editingId ? 'Редактирование заявки' : 'Новая заявка'}
           </h2>
           {editingId && (
-            <button type="button" onClick={resetForm} className="text-xs font-medium text-indigo-600 hover:underline">
+            <button type="button" onClick={resetForm} className="text-xs font-medium text-accent-600 hover:underline">
               Отменить редактирование
             </button>
           )}
         </div>
 
-        {success && <p className="text-sm font-medium text-green-600">{success}</p>}
+        {success && <p className="text-sm font-medium text-success-600">{success}</p>}
 
         {!selectedColor && !selectedMaterial && (
           <div className="space-y-2">
@@ -300,7 +300,7 @@ function RequestsContent() {
                   key={name}
                   type="button"
                   onClick={() => setSelectedMaterial(name)}
-                  className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white p-4 text-left"
+                  className="flex w-full items-center justify-between card text-left"
                 >
                   <div>
                     <p className="font-medium text-slate-800">{name}</p>
@@ -320,7 +320,7 @@ function RequestsContent() {
             <button
               type="button"
               onClick={() => setSelectedMaterial(null)}
-              className="flex items-center gap-1 text-sm font-medium text-indigo-600"
+              className="btn-link"
             >
               <IconChevronLeft />
               Все материалы
@@ -353,7 +353,7 @@ function RequestsContent() {
               <button
                 type="button"
                 onClick={() => setSelectedColor(null)}
-                className="rounded-md px-2 py-1.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+                className="btn-ghost"
               >
                 Изменить
               </button>
@@ -367,7 +367,7 @@ function RequestsContent() {
                 step="1"
                 inputMode="numeric"
                 placeholder="например 5"
-                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base sm:max-w-[160px]"
+                className="input sm:max-w-[160px]"
                 value={rollsHint}
                 onChange={(e) => setRollsHint(e.target.value)}
               />
@@ -389,7 +389,7 @@ function RequestsContent() {
                     <button
                       type="button"
                       onClick={() => removeProduct(i)}
-                      className="shrink-0 rounded-md px-2 py-1.5 text-sm font-medium text-red-500 active:bg-red-50"
+                      className="btn-ghost-danger shrink-0"
                     >
                       Убрать
                     </button>
@@ -402,7 +402,7 @@ function RequestsContent() {
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-500">Название товара</span>
                 <input
-                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  className="input"
                   placeholder="например Футболка"
                   value={productName}
                   onChange={(e) => setProductName(e.target.value)}
@@ -422,7 +422,7 @@ function RequestsContent() {
                     min={1}
                     step="1"
                     inputMode="numeric"
-                    className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base sm:max-w-[160px]"
+                    className="input sm:max-w-[160px]"
                     value={singleQty}
                     onChange={(e) => setSingleQty(e.target.value)}
                   />
@@ -453,7 +453,7 @@ function RequestsContent() {
                         type="button"
                         onClick={() => removeRow(i)}
                         disabled={rows.length === 1}
-                        className="shrink-0 rounded-md px-2 py-2.5 text-sm font-medium text-red-500 disabled:opacity-30"
+                        className="btn-ghost-danger shrink-0"
                         aria-label="Убрать строку"
                       >
                         ×
@@ -463,7 +463,7 @@ function RequestsContent() {
                   <button
                     type="button"
                     onClick={addRow}
-                    className="rounded-md border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 active:bg-slate-50"
+                    className="btn-dashed"
                   >
                     + Добавить размер
                   </button>
@@ -473,7 +473,7 @@ function RequestsContent() {
               <button
                 type="button"
                 onClick={addProductToDraft}
-                className="rounded-md border border-dashed border-indigo-300 px-3 py-2.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+                className="btn-dashed-accent"
               >
                 + Добавить товар в заявку
               </button>
@@ -482,20 +482,20 @@ function RequestsContent() {
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-500">Комментарий — по желанию</span>
               <textarea
-                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                className="input"
                 rows={2}
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
               />
             </label>
 
-            {formError && <p className="text-sm text-red-600">{formError}</p>}
+            {formError && <p className="text-sm text-danger-600">{formError}</p>}
 
             <button
               type="button"
               onClick={handleSubmit}
               disabled={saving || products.length === 0}
-              className="w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
+              className="btn-primary w-full sm:w-auto"
             >
               {saving ? 'Сохранение…' : editingId ? 'Сохранить изменения' : 'Создать заявку'}
             </button>
@@ -503,7 +503,7 @@ function RequestsContent() {
         )}
       </div>
 
-      {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+      {actionError && <p className="text-sm text-danger-600">{actionError}</p>}
 
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
 
@@ -550,7 +550,7 @@ function RequestCard({
 }) {
   const editable = req.status === 'new' || req.status === 'in_progress';
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="card">
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="font-medium text-slate-800">
@@ -582,7 +582,7 @@ function RequestCard({
                   .map((s) => `${s.size} ${s.quantity}`)
                   .join(', ')}
             {', факт '}
-            <span className={p.fact_total >= p.plan_total ? 'font-medium text-green-700' : 'font-medium text-amber-700'}>
+            <span className={p.fact_total >= p.plan_total ? 'font-medium text-success-700' : 'font-medium text-warning-700'}>
               {p.fact_total}
             </span>
           </div>
@@ -592,17 +592,17 @@ function RequestCard({
       {editable && (onEdit || onCancel || onComplete) && (
         <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
           {onEdit && (
-            <button type="button" onClick={onEdit} className="rounded-md bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-600">
+            <button type="button" onClick={onEdit} className="btn-tonal">
               Изменить
             </button>
           )}
           {onComplete && (
-            <button type="button" onClick={onComplete} className="rounded-md bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700">
+            <button type="button" onClick={onComplete} className="btn-tonal-success">
               Отметить выполненной
             </button>
           )}
           {onCancel && (
-            <button type="button" onClick={onCancel} className="rounded-md bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600">
+            <button type="button" onClick={onCancel} className="btn-tonal-danger">
               Отменить
             </button>
           )}

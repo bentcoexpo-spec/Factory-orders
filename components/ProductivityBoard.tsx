@@ -67,7 +67,7 @@ export default function ProductivityBoard({
             key={emp.id}
             type="button"
             onClick={() => setSelected(emp)}
-            className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white p-4 text-left"
+            className="flex w-full items-center justify-between card text-left"
           >
             <span className="font-medium text-slate-800">{emp.name}</span>
             <span className="text-sm text-slate-400">→</span>
@@ -144,7 +144,7 @@ function EmployeeDetail({
 
   return (
     <div className="space-y-6">
-      <button type="button" onClick={onBack} className="flex items-center gap-1 text-sm font-medium text-indigo-600">
+      <button type="button" onClick={onBack} className="btn-link">
         ← Все сотрудники
       </button>
 
@@ -156,7 +156,7 @@ function EmployeeDetail({
         </p>
       ) : (
         <>
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="card">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">Выработка за 30 дней</h2>
             <BarChart
               points={dailySeries.map((d) => ({ label: shortDateLabel(d.date), value: d.quantity }))}
@@ -165,10 +165,10 @@ function EmployeeDetail({
             />
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="card">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">В чём силён</h2>
             {bestStrength && (
-              <p className="mb-3 text-sm font-medium text-green-700">Сильнее всего: {bestStrength.operationName}</p>
+              <p className="mb-3 text-sm font-medium text-success-700">Сильнее всего: {bestStrength.operationName}</p>
             )}
             <div className="space-y-3">
               {strengths.map((s) => (
@@ -183,7 +183,7 @@ function EmployeeDetail({
                   {s.othersAvg != null && (
                     <div className="mt-1 flex h-2 overflow-hidden rounded-full bg-slate-100">
                       <div
-                        className={s.delta! >= 0 ? 'bg-green-500' : 'bg-slate-400'}
+                        className={s.delta! >= 0 ? 'bg-success-500' : 'bg-slate-400'}
                         style={{ width: `${Math.min(100, (s.myAvg / Math.max(s.myAvg, s.othersAvg)) * 100)}%` }}
                       />
                     </div>
@@ -194,13 +194,13 @@ function EmployeeDetail({
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="card">
               <p className="text-xs font-medium text-slate-500">Средний заработок в месяц</p>
               <p className="mt-1 text-lg font-semibold text-slate-900">
                 {avgMonthlyEarnings != null ? formatMoney(avgMonthlyEarnings) : '—'}
               </p>
             </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="card">
               <p className="text-xs font-medium text-slate-500">Посещаемость</p>
               <p className="mt-1 text-lg font-semibold text-slate-900">
                 {attendancePercent != null ? `${attendancePercent.toFixed(0)}%` : '—'}

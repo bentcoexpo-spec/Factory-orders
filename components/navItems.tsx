@@ -367,6 +367,14 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['ceo'],
     group: 'finance',
   },
+  {
+    href: '/finance/journal',
+    label: 'Журнал',
+    shortLabel: 'Журнал',
+    icon: IconHistory,
+    roles: ['ceo'],
+    group: 'finance',
+  },
 ];
 
 // Разделы верхнего уровня меню CEO — каждый пункт NAV_ITEMS с полем

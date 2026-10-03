@@ -10,7 +10,7 @@ import LineChart from '@/components/charts/LineChart';
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="card">
       <p className="text-xs uppercase text-slate-500">{label}</p>
       <p className="mt-1 text-xl font-semibold text-slate-900">{value}</p>
     </div>
@@ -19,7 +19,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="card">
       <h2 className="mb-3 text-sm font-semibold text-slate-700">{title}</h2>
       {children}
     </div>
@@ -100,7 +100,7 @@ function ZakroyshikControlContent() {
         <p className="mt-1 text-sm text-slate-500">Сводка по раскрою, браку и остатку сырья — только просмотр</p>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Всего партий" value={String(stats.totalBatches)} />

@@ -69,7 +69,7 @@ export default function ClientPicker({
         <button
           type="button"
           onClick={() => onChange(null)}
-          className="rounded-md px-2 py-1.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+          className="btn-ghost"
         >
           Изменить
         </button>
@@ -80,7 +80,7 @@ export default function ClientPicker({
   return (
     <div className="space-y-2">
       <input
-        className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+        className="input"
         placeholder="Имя или телефон клиента"
         value={query}
         onChange={(e) => {
@@ -115,7 +115,7 @@ export default function ClientPicker({
         <button
           type="button"
           onClick={() => setCreating(true)}
-          className="w-full rounded-md border border-dashed border-indigo-300 px-3 py-2.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+          className="btn-dashed-accent w-full"
         >
           + Добавить нового клиента «{query.trim()}»
         </button>
@@ -126,24 +126,24 @@ export default function ClientPicker({
           <p className="text-sm font-medium text-slate-700">Новый клиент: {query.trim()}</p>
           <input
             type="tel"
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+            className="input"
             placeholder="Телефон"
             value={newPhone}
             onChange={(e) => setNewPhone(e.target.value)}
           />
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-danger-600">{error}</p>}
           <div className="flex gap-2">
             <button
               type="button"
               onClick={handleCreate}
-              className="flex-1 rounded-md bg-indigo-600 px-3 py-2.5 text-sm font-medium text-white active:bg-indigo-700"
+              className="btn-primary flex-1"
             >
               Добавить и выбрать
             </button>
             <button
               type="button"
               onClick={() => setCreating(false)}
-              className="rounded-md border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-500"
+              className="btn-secondary"
             >
               Отмена
             </button>

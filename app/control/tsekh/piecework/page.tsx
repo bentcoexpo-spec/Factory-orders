@@ -73,11 +73,11 @@ function PieceworkControlContent() {
         </label>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
 
       {!loading && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <h2 className="mb-3 text-sm font-semibold text-slate-700">Записи за {formatDate(`${date}T00:00:00`)}</h2>
           {records.length === 0 && <p className="text-sm text-slate-400">Записей пока нет</p>}
           <div className="space-y-2">
@@ -92,7 +92,7 @@ function PieceworkControlContent() {
                     {r.batch_number != null ? ` · Партия №${r.batch_number}` : ''}
                   </p>
                 </div>
-                <span className="font-medium text-green-600">{formatMoney(r.line_total)}</span>
+                <span className="font-medium text-success-600">{formatMoney(r.line_total)}</span>
               </div>
             ))}
           </div>

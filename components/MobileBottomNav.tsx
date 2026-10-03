@@ -15,7 +15,7 @@ export default function MobileBottomNav() {
   if (role === 'ceo') {
     return (
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-slate-200 bg-white sm:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 flex bg-brand sm:hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {NAV_GROUPS.map((group) => {
@@ -25,11 +25,11 @@ export default function MobileBottomNav() {
             <Link
               key={group.key}
               href={group.defaultHref}
-              className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium ${
-                active ? 'text-indigo-600' : 'text-slate-500'
+              className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium min-h-[56px] ${
+                active ? 'text-brand-active' : 'text-brand-muted'
               }`}
             >
-              <Icon className={`h-5 w-5 ${active ? 'text-indigo-600' : 'text-slate-400'}`} />
+              <Icon className="h-5 w-5" />
               {group.shortLabel}
             </Link>
           );
@@ -42,7 +42,7 @@ export default function MobileBottomNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 flex border-t border-slate-200 bg-white sm:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 flex bg-brand sm:hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       {items.map((item) => {
@@ -52,11 +52,11 @@ export default function MobileBottomNav() {
           <Link
             key={item.href}
             href={item.href}
-            className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium ${
-              active ? 'text-indigo-600' : 'text-slate-500'
+            className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium min-h-[56px] ${
+              active ? 'text-brand-active' : 'text-brand-muted'
             }`}
           >
-            <Icon className={`h-5 w-5 ${active ? 'text-indigo-600' : 'text-slate-400'}`} />
+            <Icon className="h-5 w-5" />
             {item.shortLabel}
           </Link>
         );

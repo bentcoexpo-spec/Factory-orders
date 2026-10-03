@@ -85,9 +85,9 @@ function PaymentsContent() {
 
       <PaymentForm onSaved={load} />
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="card">
         <div className="mb-1 flex items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-700">
             Оплаты за {formatDateOnly(from)} — {formatDateOnly(to)}

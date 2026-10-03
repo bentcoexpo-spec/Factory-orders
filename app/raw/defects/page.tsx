@@ -76,7 +76,7 @@ function MaterialPicker({ colors, onPick, onClose }: MaterialPickerProps) {
         <>
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-medium text-slate-700">Выберите материал</p>
-            <button type="button" onClick={onClose} className="text-sm font-medium text-slate-500">
+            <button type="button" onClick={onClose} className="btn-ghost-muted">
               Отмена
             </button>
           </div>
@@ -87,7 +87,7 @@ function MaterialPicker({ colors, onPick, onClose }: MaterialPickerProps) {
                 key={name}
                 type="button"
                 onClick={() => setSelectedMaterial(name)}
-                className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-slate-800"
+                className="btn-secondary block w-full text-left"
               >
                 {name}
               </button>
@@ -99,7 +99,7 @@ function MaterialPicker({ colors, onPick, onClose }: MaterialPickerProps) {
           <button
             type="button"
             onClick={() => setSelectedMaterial(null)}
-            className="mb-2 flex items-center gap-1 text-sm font-medium text-indigo-600"
+            className="btn-link mb-2"
           >
             <IconChevronLeft />
             Все материалы
@@ -110,7 +110,7 @@ function MaterialPicker({ colors, onPick, onClose }: MaterialPickerProps) {
                 key={c.id}
                 type="button"
                 onClick={() => onPick(c)}
-                className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-800"
+                className="btn-secondary"
               >
                 {c.color}
               </button>
@@ -135,7 +135,7 @@ function BatchPicker({
     <div className="mt-3 rounded-md border border-slate-200 p-3">
       <div className="mb-2 flex items-center justify-between">
         <p className="text-sm font-medium text-slate-700">Выберите партию</p>
-        <button type="button" onClick={onClose} className="text-sm font-medium text-slate-500">
+        <button type="button" onClick={onClose} className="btn-ghost-muted">
           Отмена
         </button>
       </div>
@@ -168,7 +168,7 @@ function ReceiptDetailCard({ r }: { r: RawMaterialReceipt }) {
           {formatDate(r.created_at)}
           {r.color_code && <span className="text-slate-400"> · код {r.color_code}</span>}
         </p>
-        <span className="text-sm font-semibold text-green-600">+{r.rolls} рул.</span>
+        <span className="text-sm font-semibold text-success-600">+{r.rolls} рул.</span>
       </div>
       <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-500">
         {r.weight_kg != null && (
@@ -406,7 +406,7 @@ function DefectsContent() {
         <button
           type="button"
           onClick={() => setDetailPhoto(null)}
-          className="flex items-center gap-1 text-sm font-medium text-indigo-600"
+          className="btn-link"
         >
           <IconChevronLeft />
           Все записи
@@ -423,7 +423,7 @@ function DefectsContent() {
             <button
               type="button"
               onClick={() => downloadFile(detailPhoto.photo_path!, setError)}
-              className="flex items-center gap-1 text-sm font-medium text-indigo-600"
+              className="btn-link"
             >
               <IconDownload className="h-4 w-4" />
               Скачать фото
@@ -441,7 +441,7 @@ function DefectsContent() {
             <button
               type="button"
               onClick={() => downloadFile(detailPhoto.video_path!, setError)}
-              className="flex items-center gap-1 text-sm font-medium text-indigo-600"
+              className="btn-link"
             >
               <IconDownload className="h-4 w-4" />
               Скачать видео
@@ -454,7 +454,7 @@ function DefectsContent() {
           {detailPhoto.weight_kg != null && ` · брак: ${detailPhoto.weight_kg} кг`}
         </p>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-danger-600">{error}</p>}
 
         {detailLoading && <p className="text-sm text-slate-400">Загрузка деталей…</p>}
 
@@ -503,7 +503,7 @@ function DefectsContent() {
           type="button"
           onClick={() => handleDelete(detailPhoto)}
           disabled={deletingId === detailPhoto.id}
-          className="w-full rounded-md border border-red-200 px-5 py-3.5 text-base font-medium text-red-600 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
+          className="btn-danger w-full text-base sm:w-auto sm:py-2.5 sm:text-sm"
         >
           {deletingId === detailPhoto.id ? 'Удаление…' : 'Удалить'}
         </button>
@@ -518,7 +518,7 @@ function DefectsContent() {
         <p className="mt-1 text-sm text-slate-500">Фото- и видеофиксация дефектов ткани</p>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="card">
         <h2 className="mb-2 text-sm font-semibold text-slate-700">Материал (необязательно)</h2>
         {selectedColor ? (
           <div className="flex items-center justify-between rounded-md border border-slate-300 bg-slate-50 px-3 py-2.5">
@@ -528,7 +528,7 @@ function DefectsContent() {
             <button
               type="button"
               onClick={() => setSelectedColor(null)}
-              className="rounded-md px-2 py-1.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+              className="btn-ghost"
             >
               Убрать
             </button>
@@ -546,7 +546,7 @@ function DefectsContent() {
           <button
             type="button"
             onClick={() => setPickerOpen(true)}
-            className="rounded-md border border-dashed border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-600 active:bg-slate-50"
+            className="btn-dashed"
           >
             Указать материал
           </button>
@@ -564,7 +564,7 @@ function DefectsContent() {
             <button
               type="button"
               onClick={() => setSelectedBatch(null)}
-              className="rounded-md px-2 py-1.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+              className="btn-ghost"
             >
               Убрать
             </button>
@@ -582,7 +582,7 @@ function DefectsContent() {
           <button
             type="button"
             onClick={() => setBatchPickerOpen(true)}
-            className="rounded-md border border-dashed border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-600 active:bg-slate-50"
+            className="btn-dashed"
           >
             Указать партию
           </button>
@@ -617,7 +617,7 @@ function DefectsContent() {
           <button
             type="button"
             onClick={() => photoInputRef.current?.click()}
-            className="flex items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600 active:bg-slate-50"
+            className="btn-dashed"
           >
             <IconCamera className="h-4 w-4" />
             {pendingPhoto ? 'Переснять фото' : 'Сфотографировать брак'}
@@ -638,7 +638,7 @@ function DefectsContent() {
           <button
             type="button"
             onClick={() => videoInputRef.current?.click()}
-            className="flex items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600 active:bg-slate-50"
+            className="btn-dashed"
           >
             <IconVideo className="h-4 w-4" />
             {pendingVideo ? 'Переснять видео' : 'Записать видео брака'}
@@ -650,7 +650,7 @@ function DefectsContent() {
             {pendingPhoto && (
               <p className="flex items-center justify-between">
                 <span>📷 {pendingPhoto.name}</span>
-                <button type="button" onClick={() => setPendingPhoto(null)} className="text-red-600">
+                <button type="button" onClick={() => setPendingPhoto(null)} className="btn-ghost-danger">
                   Убрать
                 </button>
               </p>
@@ -658,7 +658,7 @@ function DefectsContent() {
             {pendingVideo && (
               <p className="flex items-center justify-between">
                 <span>🎥 {pendingVideo.name}</span>
-                <button type="button" onClick={() => setPendingVideo(null)} className="text-red-600">
+                <button type="button" onClick={() => setPendingVideo(null)} className="btn-ghost-danger">
                   Убрать
                 </button>
               </p>
@@ -671,14 +671,14 @@ function DefectsContent() {
             type="button"
             onClick={handleSaveRecord}
             disabled={saving}
-            className="mt-4 w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
+            className="btn-primary mt-4 w-full sm:w-auto"
           >
             {saving ? 'Сохранение…' : 'Сохранить запись о браке'}
           </button>
         )}
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
 
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
       {!loading && photos.length === 0 && <p className="text-sm text-slate-400">Брака пока не фиксировали</p>}

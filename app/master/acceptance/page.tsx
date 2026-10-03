@@ -128,12 +128,12 @@ function AcceptanceContent() {
         <button
           type="button"
           onClick={backToPending}
-          className="flex items-center gap-1 text-sm font-medium text-indigo-600"
+          className="btn-link"
         >
           ← Все партии
         </button>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <h1 className="text-lg font-semibold text-slate-900">
             Партия №{selectedBatch.batch_number}
             <span className="text-slate-400">
@@ -150,7 +150,7 @@ function AcceptanceContent() {
 
         {!detailLoading &&
           groups.map((g) => (
-            <div key={g.id} className="rounded-lg border border-slate-200 bg-white p-4">
+            <div key={g.id} className="card">
               <h2 className="mb-3 text-sm font-semibold text-slate-700">{g.product_name}</h2>
               <div className="space-y-2">
                 {g.items.map((item) => (
@@ -172,13 +172,13 @@ function AcceptanceContent() {
             </div>
           ))}
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-danger-600">{error}</p>}
 
         <button
           type="button"
           onClick={handleConfirm}
           disabled={saving || detailLoading}
-          className="w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
+          className="btn-primary w-full sm:w-auto"
         >
           {saving ? 'Сохранение…' : 'Подтвердить приёмку'}
         </button>
@@ -193,8 +193,8 @@ function AcceptanceContent() {
         <p className="mt-1 text-sm text-slate-500">Партии, раскроенные закройщиком и ещё не принятые в цех</p>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {success && <p className="text-sm font-medium text-green-600">{success}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
+      {success && <p className="text-sm font-medium text-success-600">{success}</p>}
 
       {pending.length === 0 && <p className="text-sm text-slate-400">Нет партий, ожидающих приёмки</p>}
 
@@ -204,7 +204,7 @@ function AcceptanceContent() {
             key={b.id}
             type="button"
             onClick={() => selectBatch(b)}
-            className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white p-4 text-left"
+            className="flex w-full items-center justify-between card text-left"
           >
             <div>
               <p className="font-medium text-slate-800">

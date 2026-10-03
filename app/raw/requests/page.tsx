@@ -8,14 +8,14 @@ import RequireRole from '@/components/RequireRole';
 
 const STATUS_BADGE: Record<CuttingRequestStatus, string> = {
   new: 'bg-slate-100 text-slate-600',
-  in_progress: 'bg-indigo-100 text-indigo-700',
-  done: 'bg-green-100 text-green-700',
-  cancelled: 'bg-red-100 text-red-600',
+  in_progress: 'bg-accent-100 text-accent-700',
+  done: 'bg-success-100 text-success-700',
+  cancelled: 'bg-danger-100 text-danger-600',
 };
 
 function RequestCard({ req }: { req: CuttingRequest }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="card">
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="font-medium text-slate-800">
@@ -84,7 +84,7 @@ function RequestsList() {
         <p className="mt-1 text-sm text-slate-500">Что просит раскроить CEO — новые сверху</p>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
 
       {!loading && (

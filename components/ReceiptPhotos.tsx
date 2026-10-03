@@ -164,7 +164,7 @@ export function SavedPhotos({ kind, ownerId, onChanged }: { kind: PhotoKind; own
         </button>
       </div>
       {photos.length === 0 && !busy && <p className="mt-1 text-xs text-slate-400">Фото нет</p>}
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-1 text-xs text-danger-600">{error}</p>}
       <input
         ref={inputRef}
         type="file"

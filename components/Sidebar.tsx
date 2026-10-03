@@ -15,10 +15,10 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
     <Link
       href={item.href}
       className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-        active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+        active ? 'bg-brand-hover text-brand-active' : 'text-brand-muted hover:bg-brand-hover hover:text-brand-active'
       }`}
     >
-      <Icon className={`h-4 w-4 ${active ? 'text-indigo-600' : 'text-slate-400'}`} />
+      <Icon className="h-4 w-4" />
       {item.label}
     </Link>
   );
@@ -41,14 +41,14 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white sm:flex">
-      <div className="flex items-center gap-2 border-b border-slate-200 px-5 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-indigo-600 text-sm font-bold text-white">
+    <aside className="hidden w-60 shrink-0 flex-col bg-brand sm:flex">
+      <div className="flex items-center gap-2 border-b border-brand-line px-5 py-5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-active text-sm font-bold text-brand">
           Ф
         </div>
         <div>
-          <p className="text-sm font-semibold leading-tight text-slate-900">Фабрика</p>
-          <p className="text-xs leading-tight text-slate-400">Учёт заказов</p>
+          <p className="text-sm font-semibold leading-tight text-brand-active">Фабрика</p>
+          <p className="text-xs leading-tight text-brand-muted">Учёт заказов</p>
         </div>
       </div>
 
@@ -62,10 +62,10 @@ export default function Sidebar() {
                   key={group.key}
                   href={group.defaultHref}
                   className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                    active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    active ? 'bg-brand-hover text-brand-active' : 'text-brand-muted hover:bg-brand-hover hover:text-brand-active'
                   }`}
                 >
-                  <Icon className={`h-4 w-4 ${active ? 'text-indigo-600' : 'text-slate-400'}`} />
+                  <Icon className="h-4 w-4" />
                   {group.label}
                 </Link>
               );
@@ -73,12 +73,12 @@ export default function Sidebar() {
           : items.map((item) => <NavLink key={item.href} item={item} pathname={pathname} />)}
       </nav>
 
-      <div className="border-t border-slate-200 px-4 py-4">
+      <div className="border-t border-brand-line px-4 py-4">
         {email && (
           <div className="mb-3">
-            <p className="truncate text-xs font-medium text-slate-700">{email}</p>
+            <p className="truncate text-xs font-medium text-brand-active">{email}</p>
             {role && (
-              <span className="mt-1 inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+              <span className="mt-1 inline-flex items-center rounded-full bg-brand-hover px-2 py-0.5 text-[11px] font-medium text-brand-active">
                 {ROLE_LABELS[role]}
               </span>
             )}
@@ -86,7 +86,7 @@ export default function Sidebar() {
         )}
         <button
           onClick={handleLogout}
-          className="w-full rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-50"
+          className="w-full rounded-md border border-brand-line px-3 py-1.5 text-xs font-medium text-brand-active hover:bg-brand-hover"
         >
           Выйти
         </button>

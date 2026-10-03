@@ -290,12 +290,12 @@ function SewnReportContent() {
         <button
           type="button"
           onClick={backToPending}
-          className="flex items-center gap-1 text-sm font-medium text-indigo-600"
+          className="btn-link"
         >
           ← Все партии
         </button>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <h1 className="text-lg font-semibold text-slate-900">
             Партия №{selectedBatch.batch_number}
             <span className="text-slate-400">
@@ -312,7 +312,7 @@ function SewnReportContent() {
 
         {!detailLoading &&
           groups.map((g) => (
-            <div key={g.id} className="rounded-lg border border-slate-200 bg-white p-4">
+            <div key={g.id} className="card">
               <h2 className="mb-3 text-sm font-semibold text-slate-700">{g.product_name}</h2>
               <div className="space-y-3">
                 {g.items.map((item) => (
@@ -341,7 +341,7 @@ function SewnReportContent() {
                         min={0}
                         step="1"
                         inputMode="numeric"
-                        className="w-20 rounded-md border border-red-200 px-2 py-2 text-base"
+                        className="w-20 rounded-md border border-danger-200 px-2 py-2 text-base"
                         value={draft[item.id]?.defect ?? ''}
                         onChange={(e) => {
                           setDraft((prev) => ({ ...prev, [item.id]: { ...prev[item.id], defect: e.target.value } }));
@@ -356,7 +356,7 @@ function SewnReportContent() {
             </div>
           ))}
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <h2 className="mb-3 text-sm font-semibold text-slate-700">Брак этой партии</h2>
 
           <label className="mb-3 block max-w-[10rem]">
@@ -388,7 +388,7 @@ function SewnReportContent() {
             <button
               type="button"
               onClick={() => photoInputRef.current?.click()}
-              className="flex items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600"
+              className="btn-dashed"
             >
               <IconCamera className="h-4 w-4" />
               {pendingPhoto ? 'Переснять фото' : 'Сфотографировать брак'}
@@ -409,7 +409,7 @@ function SewnReportContent() {
             <button
               type="button"
               onClick={() => videoInputRef.current?.click()}
-              className="flex items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600"
+              className="btn-dashed"
             >
               <IconVideo className="h-4 w-4" />
               {pendingVideo ? 'Переснять видео' : 'Записать видео брака'}
@@ -421,7 +421,7 @@ function SewnReportContent() {
               {pendingPhoto && (
                 <p className="flex items-center justify-between">
                   <span>📷 {pendingPhoto.name}</span>
-                  <button type="button" onClick={() => setPendingPhoto(null)} className="text-red-600">
+                  <button type="button" onClick={() => setPendingPhoto(null)} className="btn-ghost-danger">
                     Убрать
                   </button>
                 </p>
@@ -429,7 +429,7 @@ function SewnReportContent() {
               {pendingVideo && (
                 <p className="flex items-center justify-between">
                   <span>🎥 {pendingVideo.name}</span>
-                  <button type="button" onClick={() => setPendingVideo(null)} className="text-red-600">
+                  <button type="button" onClick={() => setPendingVideo(null)} className="btn-ghost-danger">
                     Убрать
                   </button>
                 </p>
@@ -438,7 +438,7 @@ function SewnReportContent() {
                 type="button"
                 onClick={handleSaveDefectRecord}
                 disabled={uploading}
-                className="w-full rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                className="btn-primary w-full"
               >
                 {uploading ? 'Сохранение…' : 'Сохранить запись о браке'}
               </button>
@@ -473,7 +473,7 @@ function SewnReportContent() {
                         <button
                           type="button"
                           onClick={() => downloadFile(BUCKET, p.photo_path!, setError)}
-                          className="text-indigo-600"
+                          className="text-accent-600"
                           aria-label="Скачать фото"
                         >
                           <IconDownload className="h-3.5 w-3.5" />
@@ -483,7 +483,7 @@ function SewnReportContent() {
                         <button
                           type="button"
                           onClick={() => downloadFile(BUCKET, p.video_path!, setError)}
-                          className="text-indigo-600"
+                          className="text-accent-600"
                           aria-label="Скачать видео"
                         >
                           <IconVideo className="h-3.5 w-3.5" />
@@ -497,14 +497,14 @@ function SewnReportContent() {
           )}
         </div>
 
-        {overageWarning && <p className="text-sm font-medium text-amber-600">{overageWarning}</p>}
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {overageWarning && <p className="text-sm font-medium text-warning-600">{overageWarning}</p>}
+        {error && <p className="text-sm text-danger-600">{error}</p>}
 
         <button
           type="button"
           onClick={handleSave}
           disabled={saving || detailLoading}
-          className="w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
+          className="btn-primary w-full sm:w-auto"
         >
           {saving ? 'Сохранение…' : overageWarning ? 'Сдать партию всё равно' : 'Сдать партию'}
         </button>
@@ -519,8 +519,8 @@ function SewnReportContent() {
         <p className="mt-1 text-sm text-slate-500">Партии в пошиве — сколько сшито и сколько брака</p>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {success && <p className="text-sm font-medium text-green-600">{success}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
+      {success && <p className="text-sm font-medium text-success-600">{success}</p>}
 
       {pending.length === 0 && <p className="text-sm text-slate-400">Нет партий в пошиве</p>}
 
@@ -530,7 +530,7 @@ function SewnReportContent() {
             key={b.id}
             type="button"
             onClick={() => selectBatch(b)}
-            className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white p-4 text-left"
+            className="flex w-full items-center justify-between card text-left"
           >
             <div>
               <p className="font-medium text-slate-800">

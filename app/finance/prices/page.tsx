@@ -53,7 +53,7 @@ function ProductPicker({
         <button
           type="button"
           onClick={() => onChange(null)}
-          className="rounded-md px-2 py-1.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+          className="btn-ghost"
         >
           Изменить
         </button>
@@ -64,7 +64,7 @@ function ProductPicker({
   return (
     <div className="space-y-2">
       <input
-        className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+        className="input"
         placeholder="Название товара"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
@@ -142,13 +142,13 @@ function StandardPrices() {
   return (
     <div className="space-y-4">
       <input
-        className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base sm:max-w-sm"
+        className="input sm:max-w-sm"
         placeholder="Поиск по названию товара"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
       {!loading && visible.length === 0 && <p className="text-sm text-slate-400">Товаров не найдено</p>}
 
@@ -162,7 +162,7 @@ function StandardPrices() {
                 <div className="min-w-0">
                   <p className="truncate font-medium text-slate-800">{p.name}</p>
                   {p.price == null && (
-                    <span className="text-xs font-medium text-amber-600">без цены</span>
+                    <span className="text-xs font-medium text-warning-600">без цены</span>
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -179,7 +179,7 @@ function StandardPrices() {
                   {dirty && (
                     <button
                       onClick={() => save(p)}
-                      className="rounded-md bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-600 sm:py-1.5 sm:text-xs"
+                      className="btn-tonal"
                     >
                       Сохранить
                     </button>
@@ -267,7 +267,7 @@ function SpecialPrices() {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+      <div className="space-y-3 card">
         <h2 className="text-sm font-semibold text-slate-700">Задать особую цену</h2>
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
@@ -285,18 +285,18 @@ function SpecialPrices() {
               min={0}
               step="0.01"
               inputMode="decimal"
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+              className="input"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
             />
           </label>
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-danger-600">{error}</p>}
         <button
           type="button"
           onClick={handleSave}
           disabled={saving || !client || !product}
-          className="w-full rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50 sm:w-auto"
+          className="btn-primary w-full sm:w-auto"
         >
           {saving ? 'Сохранение…' : 'Сохранить особую цену'}
         </button>
@@ -321,7 +321,7 @@ function SpecialPrices() {
               </div>
               <div className="flex shrink-0 items-center gap-3">
                 <span className="font-semibold text-slate-800">{formatMoney(row.price)}</span>
-                <button onClick={() => handleDelete(row)} className="text-xs font-medium text-red-600 hover:underline">
+                <button onClick={() => handleDelete(row)} className="btn-ghost-danger">
                   Убрать
                 </button>
               </div>

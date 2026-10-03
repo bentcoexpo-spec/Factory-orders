@@ -10,8 +10,8 @@ import { useRole } from '@/components/RoleProvider';
 import SizeColorGrid, { GridCell } from '@/components/SizeColorGrid';
 
 const STOCK_STYLES: Record<'out' | 'low' | 'ok', string> = {
-  out: 'border-red-300 text-red-600',
-  low: 'border-amber-300 text-amber-600',
+  out: 'border-danger-300 text-danger-600',
+  low: 'border-warning-300 text-warning-600',
   ok: 'border-slate-300 text-slate-700',
 };
 
@@ -42,7 +42,7 @@ function StockEditor({
       {dirty && (
         <button
           onClick={onSave}
-          className="shrink-0 rounded-md bg-indigo-50 px-3 py-2.5 text-sm font-medium text-indigo-600 sm:py-1.5 sm:text-xs"
+          className="btn-tonal shrink-0"
         >
           Сохранить
         </button>
@@ -53,8 +53,8 @@ function StockEditor({
 
 function StockNote({ quantity }: { quantity: number }) {
   const status = stockStatus(quantity);
-  if (status === 'out') return <span className="text-xs font-medium text-red-600">Нет в наличии</span>;
-  if (status === 'low') return <span className="text-xs font-medium text-amber-600">Мало ({quantity})</span>;
+  if (status === 'out') return <span className="text-xs font-medium text-danger-600">Нет в наличии</span>;
+  if (status === 'low') return <span className="text-xs font-medium text-warning-600">Мало ({quantity})</span>;
   return null;
 }
 
@@ -315,14 +315,14 @@ export default function ProductsPage() {
   }
 
   const addForm = showAddForm && (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="card">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-700">{gridMode ? 'Сетка размеров' : 'Добавить вариант'}</h2>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => setGridMode((v) => !v)}
-            className="text-xs font-medium text-indigo-600 active:underline"
+            className="text-xs font-medium text-accent-600 active:underline"
           >
             {gridMode ? 'Один вариант' : 'Сразу несколько (сетка)'}
           </button>
@@ -336,7 +336,7 @@ export default function ProductsPage() {
         <label className={`block text-sm ${gridMode ? '' : 'lg:col-span-2'}`}>
           <span className="mb-1 block text-xs font-medium text-slate-500">Название товара *</span>
           <input
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base disabled:bg-slate-50 disabled:text-slate-500"
+            className="input disabled:bg-slate-50 disabled:text-slate-500"
             value={form.product_name}
             onChange={(e) => setForm({ ...form, product_name: e.target.value })}
             disabled={!!selectedProduct}
@@ -349,7 +349,7 @@ export default function ProductsPage() {
             <label className="block text-sm">
               <span className="mb-1 block text-xs font-medium text-slate-500">Цвет</span>
               <input
-                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                className="input"
                 value={form.color}
                 onChange={(e) => setForm({ ...form, color: e.target.value })}
               />
@@ -357,7 +357,7 @@ export default function ProductsPage() {
             <label className="block text-sm">
               <span className="mb-1 block text-xs font-medium text-slate-500">Размер</span>
               <input
-                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                className="input"
                 value={form.size}
                 onChange={(e) => setForm({ ...form, size: e.target.value })}
               />
@@ -370,7 +370,7 @@ export default function ProductsPage() {
             Печать {gridMode && <span className="normal-case text-slate-400">(одна на всю партию)</span>}
           </span>
           <input
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+            className="input"
             placeholder="без печати"
             value={form.print_type}
             onChange={(e) => setForm({ ...form, print_type: e.target.value })}
@@ -385,7 +385,7 @@ export default function ProductsPage() {
               min={0}
               step="1"
               inputMode="numeric"
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+              className="input"
               value={form.stock_quantity}
               onChange={(e) => setForm({ ...form, stock_quantity: e.target.value })}
             />
@@ -405,7 +405,7 @@ export default function ProductsPage() {
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-500">Артикул</span>
           <input
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+            className="input"
             value={form.sku}
             onChange={(e) => setForm({ ...form, sku: e.target.value })}
           />
@@ -413,7 +413,7 @@ export default function ProductsPage() {
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-500">Ед. изм.</span>
           <input
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+            className="input"
             placeholder="шт, кг…"
             value={form.unit}
             onChange={(e) => setForm({ ...form, unit: e.target.value })}
@@ -424,7 +424,7 @@ export default function ProductsPage() {
             Тип склада {selectedProduct && <span className="normal-case text-slate-400">(у товара)</span>}
           </span>
           <select
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base disabled:bg-slate-50"
+            className="input disabled:bg-slate-50"
             value={form.warehouse_type}
             onChange={(e) => setForm({ ...form, warehouse_type: e.target.value as WarehouseType })}
             disabled={!!selectedProduct}
@@ -445,7 +445,7 @@ export default function ProductsPage() {
           <button
             type="submit"
             disabled={saving}
-            className="rounded-md bg-indigo-600 px-4 py-3 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:col-span-2 sm:py-2.5 sm:text-sm lg:col-span-6"
+            className="btn-primary sm:col-span-2 lg:col-span-6"
           >
             {saving ? 'Сохранение…' : 'Добавить вариант'}
           </button>
@@ -462,7 +462,7 @@ export default function ProductsPage() {
           {list.map((v) => {
             const label = variantLabel(v);
             return (
-              <div key={v.id} className="rounded-lg border border-slate-200 bg-white p-4">
+              <div key={v.id} className="card">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="font-medium text-slate-800">
@@ -477,7 +477,7 @@ export default function ProductsPage() {
                   {canDelete(v) && (
                     <button
                       onClick={() => handleDelete(v.id)}
-                      className="shrink-0 rounded-md px-2 py-1 text-sm font-medium text-red-600 active:bg-red-50"
+                      className="btn-ghost-danger shrink-0"
                     >
                       Удалить
                     </button>
@@ -499,7 +499,7 @@ export default function ProductsPage() {
                   {isCeo && (
                     <div className="text-right">
                       <p className="mb-1 text-xs font-medium text-slate-500">Цена</p>
-                      <p className={`text-sm font-medium ${v.price == null ? 'text-amber-600' : 'text-slate-700'}`}>
+                      <p className={`text-sm font-medium ${v.price == null ? 'text-warning-600' : 'text-slate-700'}`}>
                         {v.price == null ? 'без цены' : formatMoney(v.price)}
                       </p>
                     </div>
@@ -518,7 +518,7 @@ export default function ProductsPage() {
                 <th className="px-4 py-3">Вариант</th>
                 <th className="px-4 py-3">Артикул</th>
                 <th className="px-4 py-3">Остаток</th>
-                {isCeo && <th className="px-4 py-3">Цена</th>}
+                {isCeo && <th className="num px-4 py-3">Цена</th>}
                 {(isCeo || isKladovshik) && <th className="px-4 py-3" />}
               </tr>
             </thead>
@@ -541,7 +541,7 @@ export default function ProductsPage() {
                       </div>
                     </td>
                     {isCeo && (
-                      <td className={`px-4 py-3 ${v.price == null ? 'text-amber-600' : 'text-slate-600'}`}>
+                      <td className={`num px-4 py-3 ${v.price == null ? 'text-warning-600' : 'text-slate-600'}`}>
                         {v.price == null ? 'без цены' : formatMoney(v.price)}
                       </td>
                     )}
@@ -550,7 +550,7 @@ export default function ProductsPage() {
                         {canDelete(v) && (
                           <button
                             onClick={() => handleDelete(v.id)}
-                            className="text-xs font-medium text-red-600 hover:underline"
+                            className="btn-ghost-danger"
                           >
                             Удалить
                           </button>
@@ -576,7 +576,7 @@ export default function ProductsPage() {
               setSelectedProduct(null);
               closeAddForm();
             }}
-            className="text-xs font-medium text-indigo-600 active:underline"
+            className="text-xs font-medium text-accent-600 active:underline"
           >
             ← Назад к складу
           </button>
@@ -596,7 +596,7 @@ export default function ProductsPage() {
                 <button
                   onClick={handleRenameProduct}
                   disabled={renaming}
-                  className="shrink-0 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  className="btn-primary shrink-0"
                 >
                   {renaming ? '…' : 'Сохранить'}
                 </button>
@@ -656,7 +656,7 @@ export default function ProductsPage() {
             </p>
           </div>
           {isCeo && (
-            <Link href="/warehouse/receiving-history" className="text-xs font-medium text-indigo-600 hover:underline">
+            <Link href="/warehouse/receiving-history" className="text-xs font-medium text-accent-600 hover:underline">
               История прихода →
             </Link>
           )}
@@ -672,8 +672,8 @@ export default function ProductsPage() {
               setSelectedProduct(null);
               closeAddForm();
             }}
-            className={`rounded-full px-4 py-2 text-sm font-medium ${
-              activeType === type ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+            className={`rounded-full px-4 py-2.5 text-sm font-medium ${
+              activeType === type ? 'bg-accent-600 text-white' : 'bg-slate-100 text-slate-600'
             }`}
           >
             {WAREHOUSE_TYPE_LABELS[type]}
@@ -684,7 +684,7 @@ export default function ProductsPage() {
       {(isCeo || (isKladovshik && selectedProduct)) && !showAddForm && (
         <button
           onClick={() => openAddForm(selectedProduct ?? undefined)}
-          className="w-full rounded-md border border-dashed border-indigo-300 px-4 py-3 text-sm font-medium text-indigo-600 active:bg-indigo-50 sm:w-auto"
+          className="btn-dashed-accent w-full sm:w-auto"
         >
           {selectedProduct ? '+ Добавить вариант' : '+ Новый товар'}
         </button>
@@ -692,7 +692,7 @@ export default function ProductsPage() {
 
       {addForm}
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
 
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
 
@@ -700,8 +700,8 @@ export default function ProductsPage() {
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setColorFilter(null)}
-            className={`rounded-full px-4 py-2 text-sm font-medium ${
-              colorFilter === null ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+            className={`rounded-full px-4 py-2.5 text-sm font-medium ${
+              colorFilter === null ? 'bg-accent-600 text-white' : 'bg-slate-100 text-slate-600'
             }`}
           >
             Все
@@ -710,8 +710,8 @@ export default function ProductsPage() {
             <button
               key={color}
               onClick={() => setColorFilter(color)}
-              className={`rounded-full px-4 py-2 text-sm font-medium ${
-                colorFilter === color ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+              className={`rounded-full px-4 py-2.5 text-sm font-medium ${
+                colorFilter === color ? 'bg-accent-600 text-white' : 'bg-slate-100 text-slate-600'
               }`}
             >
               {color}
@@ -742,7 +742,7 @@ export default function ProductsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {problemCount > 0 && (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                      <span className="rounded-full bg-warning-100 px-2 py-0.5 text-xs font-medium text-warning-700">
                         нехватка: {problemCount}
                       </span>
                     )}

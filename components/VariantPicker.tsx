@@ -5,8 +5,8 @@ import { ProductVariant, sizeRank, stockStatus, variantLabel } from '@/lib/types
 
 function StockBadge({ quantity }: { quantity: number }) {
   const status = stockStatus(quantity);
-  if (status === 'out') return <span className="text-xs font-semibold text-red-600">Нет в наличии</span>;
-  if (status === 'low') return <span className="text-xs font-semibold text-amber-600">Мало ({quantity})</span>;
+  if (status === 'out') return <span className="text-xs font-semibold text-danger-600">Нет в наличии</span>;
+  if (status === 'low') return <span className="text-xs font-semibold text-warning-600">Мало ({quantity})</span>;
   return <span className="text-xs text-slate-400">Остаток {quantity}</span>;
 }
 
@@ -74,7 +74,7 @@ export default function VariantPicker({
                 type="button"
                 onClick={() => setActiveColor(color)}
                 className={`rounded-full px-3 py-2 text-sm font-medium ${
-                  activeColor === color ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                  activeColor === color ? 'bg-accent-600 text-white' : 'bg-slate-100 text-slate-600'
                 }`}
               >
                 {color}
@@ -93,7 +93,7 @@ export default function VariantPicker({
             <div
               key={v.id}
               className={`flex items-center gap-3 rounded-md border p-2 ${
-                status === 'out' ? 'border-red-300 bg-red-50' : status === 'low' ? 'border-amber-300 bg-amber-50' : 'border-slate-200'
+                status === 'out' ? 'border-danger-300 bg-danger-50' : status === 'low' ? 'border-warning-300 bg-warning-50' : 'border-slate-200'
               }`}
             >
               <div className="flex-1">
@@ -121,7 +121,7 @@ export default function VariantPicker({
           type="button"
           onClick={handleSubmit}
           disabled={filledCount === 0}
-          className="rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white active:bg-indigo-700 disabled:opacity-50"
+          className="btn-primary"
         >
           Добавить в заказ
         </button>

@@ -28,7 +28,7 @@ function ShopPicker() {
         <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Какой цех вы ведёте?</h1>
         <p className="mt-1 text-sm text-slate-500">Можно переключиться позже — наверху экрана</p>
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
       <div className="flex gap-3">
         {SHOPS.map((shop) => (
           <button
@@ -76,7 +76,7 @@ function ShopSwitcher({ shop }: { shop: Shop }) {
               onClick={() => switchTo(s)}
               disabled={switching}
               className={`px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${
-                s === shop ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 active:bg-slate-50'
+                s === shop ? 'bg-accent-600 text-white' : 'bg-white text-slate-600 active:bg-slate-50'
               }`}
             >
               {SHOP_LABELS[s]}
@@ -84,7 +84,7 @@ function ShopSwitcher({ shop }: { shop: Shop }) {
           ))}
         </div>
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
     </div>
   );
 }

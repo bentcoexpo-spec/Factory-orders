@@ -19,7 +19,7 @@ export default function ShopToggle({ shop, onChange }: { shop: Shop; onChange: (
           type="button"
           onClick={() => onChange(s)}
           className={`px-4 py-2 text-sm font-medium ${
-            s === shop ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 active:bg-slate-50'
+            s === shop ? 'bg-accent-600 text-white' : 'bg-white text-slate-600 active:bg-slate-50'
           }`}
         >
           {SHOP_LABELS[s]}

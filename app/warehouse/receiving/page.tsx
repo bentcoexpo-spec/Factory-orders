@@ -41,7 +41,7 @@ function WarehouseTypeSelect({
         Тип склада <span className="normal-case text-slate-400">(если товар новый)</span>
       </span>
       <select
-        className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+        className="input"
         value={value}
         onChange={(e) => onChange(e.target.value as WarehouseType)}
       >
@@ -277,7 +277,7 @@ function ReceivingForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <h2 className="mb-3 text-sm font-semibold text-slate-700">Товар</h2>
 
           {selected ? (
@@ -290,7 +290,7 @@ function ReceivingForm() {
               <button
                 type="button"
                 onClick={() => setSelected(null)}
-                className="rounded-md px-2 py-1.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+                className="btn-ghost"
               >
                 Изменить
               </button>
@@ -298,7 +298,7 @@ function ReceivingForm() {
           ) : (
             <>
               <input
-                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                className="input"
                 placeholder="Название товара"
                 value={productQuery}
                 onChange={(e) => {
@@ -330,9 +330,9 @@ function ReceivingForm() {
                               onClick={() => selectVariant(v)}
                               className={`rounded-md border px-3 py-2.5 text-left text-sm ${
                                 status === 'out'
-                                  ? 'border-red-300 bg-red-50'
+                                  ? 'border-danger-300 bg-danger-50'
                                   : status === 'low'
-                                    ? 'border-amber-300 bg-amber-50'
+                                    ? 'border-warning-300 bg-warning-50'
                                     : 'border-slate-200 bg-white'
                               }`}
                             >
@@ -355,7 +355,7 @@ function ReceivingForm() {
                       setAddingNew(true);
                       setNewVariant(emptyNewVariantForm(productQuery.trim()));
                     }}
-                    className="rounded-md border border-dashed border-indigo-300 px-3 py-2.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+                    className="btn-dashed-accent"
                   >
                     + Новый товар (1 вариант)
                   </button>
@@ -365,7 +365,7 @@ function ReceivingForm() {
                       setGridMode(true);
                       setGridProductName(productQuery.trim());
                     }}
-                    className="rounded-md border border-dashed border-indigo-300 px-3 py-2.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+                    className="btn-dashed-accent"
                   >
                     + Сетка размеров (сразу несколько)
                   </button>
@@ -378,7 +378,7 @@ function ReceivingForm() {
                   <label className="block">
                     <span className="mb-1 block text-xs font-medium text-slate-500">Название товара *</span>
                     <input
-                      className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                      className="input"
                       value={newVariant.product_name}
                       onChange={(e) => setNewVariant({ ...newVariant, product_name: e.target.value })}
                     />
@@ -386,7 +386,7 @@ function ReceivingForm() {
                   <label className="block">
                     <span className="mb-1 block text-xs font-medium text-slate-500">Код (артикул)</span>
                     <input
-                      className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                      className="input"
                       value={newVariant.sku}
                       onChange={(e) => setNewVariant({ ...newVariant, sku: e.target.value })}
                     />
@@ -395,7 +395,7 @@ function ReceivingForm() {
                     <label className="block">
                       <span className="mb-1 block text-xs font-medium text-slate-500">Цвет</span>
                       <input
-                        className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                        className="input"
                         value={newVariant.color}
                         onChange={(e) => setNewVariant({ ...newVariant, color: e.target.value })}
                       />
@@ -403,7 +403,7 @@ function ReceivingForm() {
                     <label className="block">
                       <span className="mb-1 block text-xs font-medium text-slate-500">Размер</span>
                       <input
-                        className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                        className="input"
                         value={newVariant.size}
                         onChange={(e) => setNewVariant({ ...newVariant, size: e.target.value })}
                       />
@@ -412,7 +412,7 @@ function ReceivingForm() {
                   <label className="block">
                     <span className="mb-1 block text-xs font-medium text-slate-500">Печать</span>
                     <input
-                      className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                      className="input"
                       placeholder="без печати"
                       value={newVariant.print_type}
                       onChange={(e) => setNewVariant({ ...newVariant, print_type: e.target.value })}
@@ -427,14 +427,14 @@ function ReceivingForm() {
                       type="button"
                       onClick={handleCreateVariant}
                       disabled={creatingVariant || !newVariant.product_name.trim()}
-                      className="flex-1 rounded-md bg-indigo-600 px-3 py-2.5 text-sm font-medium text-white active:bg-indigo-700 disabled:opacity-50"
+                      className="btn-primary flex-1"
                     >
                       {creatingVariant ? 'Создание…' : 'Создать и выбрать'}
                     </button>
                     <button
                       type="button"
                       onClick={() => setAddingNew(false)}
-                      className="rounded-md border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-500"
+                      className="btn-secondary"
                     >
                       Отмена
                     </button>
@@ -449,7 +449,7 @@ function ReceivingForm() {
                     <button
                       type="button"
                       onClick={() => setGridMode(false)}
-                      className="text-sm font-medium text-slate-500"
+                      className="btn-ghost-muted"
                     >
                       Отмена
                     </button>
@@ -457,7 +457,7 @@ function ReceivingForm() {
                   <label className="block">
                     <span className="mb-1 block text-xs font-medium text-slate-500">Название товара *</span>
                     <input
-                      className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                      className="input"
                       value={gridProductName}
                       onChange={(e) => setGridProductName(e.target.value)}
                     />
@@ -467,14 +467,14 @@ function ReceivingForm() {
                       Печать <span className="normal-case text-slate-400">(одна на всю партию)</span>
                     </span>
                     <input
-                      className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                      className="input"
                       placeholder="без печати"
                       value={gridPrintType}
                       onChange={(e) => setGridPrintType(e.target.value)}
                     />
                   </label>
                   <WarehouseTypeSelect value={gridWarehouseType} onChange={setGridWarehouseType} />
-                  <p className="text-xs text-amber-600">
+                  <p className="text-xs text-warning-600">
                     Сетка создаёт новые комбинации размер+цвет. Если такой вариант уже есть — пополните его
                     остаток обычным способом выше.
                   </p>
@@ -491,7 +491,7 @@ function ReceivingForm() {
         </div>
 
         {!gridMode && (
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="card">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">Количество</h2>
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
@@ -501,7 +501,7 @@ function ReceivingForm() {
                   min={0}
                   step="1"
                   inputMode="numeric"
-                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  className="input"
                   value={packs}
                   onChange={(e) => setPacks(e.target.value)}
                 />
@@ -513,7 +513,7 @@ function ReceivingForm() {
                   min={0}
                   step="1"
                   inputMode="numeric"
-                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  className="input"
                   value={unitsPerPack}
                   onChange={(e) => setUnitsPerPack(e.target.value)}
                 />
@@ -526,7 +526,7 @@ function ReceivingForm() {
                 min={0}
                 step="1"
                 inputMode="numeric"
-                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                className="input"
                 value={looseUnits}
                 onChange={(e) => setLooseUnits(e.target.value)}
               />
@@ -537,11 +537,11 @@ function ReceivingForm() {
           </div>
         )}
 
-        <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+        <div className="space-y-3 card">
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-slate-500">Кто привёз</span>
             <input
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+              className="input"
               value={broughtBy}
               onChange={(e) => setBroughtBy(e.target.value)}
             />
@@ -549,7 +549,7 @@ function ReceivingForm() {
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-slate-500">Комментарий</span>
             <input
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+              className="input"
               placeholder="Необязательно, на остаток не влияет"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
@@ -557,14 +557,14 @@ function ReceivingForm() {
           </label>
         </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        {success && <p className="text-sm font-medium text-green-600">{success}</p>}
+        {error && <p className="text-sm text-danger-600">{error}</p>}
+        {success && <p className="text-sm font-medium text-success-600">{success}</p>}
 
         {!gridMode && (
           <button
             type="submit"
             disabled={saving}
-            className="w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
+            className="btn-primary w-full sm:w-auto"
           >
             {saving ? 'Сохранение…' : 'Оформить приход'}
           </button>
@@ -572,7 +572,7 @@ function ReceivingForm() {
       </form>
 
       {recent.length > 0 && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <h2 className="mb-3 text-sm font-semibold text-slate-700">Недавние приходы</h2>
           <div className="space-y-2">
             {recent.map((r) => {
@@ -589,7 +589,7 @@ function ReceivingForm() {
                       {r.brought_by ? ` · ${r.brought_by}` : ''}
                     </p>
                   </div>
-                  <span className="font-medium text-green-600">+{r.total_quantity}</span>
+                  <span className="font-medium text-success-600">+{r.total_quantity}</span>
                 </div>
               );
             })}

@@ -23,7 +23,7 @@ function BatchPicker({
     <div className="mt-2 rounded-md border border-slate-200 p-3">
       <div className="mb-2 flex items-center justify-between">
         <p className="text-sm font-medium text-slate-700">Выберите партию</p>
-        <button type="button" onClick={onClose} className="text-sm font-medium text-slate-500">
+        <button type="button" onClick={onClose} className="btn-ghost-muted">
           Отмена
         </button>
       </div>
@@ -203,22 +203,22 @@ function PieceworkContent() {
         <span className="mb-1 block text-xs font-medium text-slate-500">Дата</span>
         <input
           type="date"
-          className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+          className="input"
           value={date}
           onChange={(e) => setDate(e.target.value)}
         />
       </label>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {success && <p className="text-sm font-medium text-green-600">{success}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
+      {success && <p className="text-sm font-medium text-success-600">{success}</p>}
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="card">
         <h2 className="mb-3 text-sm font-semibold text-slate-700">Добавить запись</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-slate-500">Сотрудник</span>
             <select
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+              className="input"
               value={formEmployeeId}
               onChange={(e) => setFormEmployeeId(e.target.value)}
             >
@@ -233,7 +233,7 @@ function PieceworkContent() {
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-slate-500">Операция</span>
             <select
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+              className="input"
               value={formOperationId}
               onChange={(e) => setFormOperationId(e.target.value)}
             >
@@ -252,7 +252,7 @@ function PieceworkContent() {
               min={1}
               step="1"
               inputMode="numeric"
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+              className="input"
               value={formQuantity}
               onChange={(e) => setFormQuantity(e.target.value)}
             />
@@ -265,7 +265,7 @@ function PieceworkContent() {
                 <button
                   type="button"
                   onClick={() => setFormBatch(null)}
-                  className="text-sm font-medium text-indigo-600"
+                  className="text-sm font-medium text-accent-600"
                 >
                   Убрать
                 </button>
@@ -283,7 +283,7 @@ function PieceworkContent() {
               <button
                 type="button"
                 onClick={() => setBatchPickerOpen(true)}
-                className="rounded-md border border-dashed border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-600"
+                className="btn-dashed"
               >
                 Указать партию
               </button>
@@ -294,7 +294,7 @@ function PieceworkContent() {
           type="button"
           onClick={handleAddRecord}
           disabled={saving}
-          className="mt-4 w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
+          className="btn-primary mt-4 w-full sm:w-auto"
         >
           {saving ? 'Сохранение…' : 'Добавить запись'}
         </button>
@@ -303,7 +303,7 @@ function PieceworkContent() {
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
 
       {!loading && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <h2 className="mb-3 text-sm font-semibold text-slate-700">Записи за {formatDate(`${date}T00:00:00`)}</h2>
           {records.length === 0 && <p className="text-sm text-slate-400">Записей пока нет</p>}
           <div className="space-y-2">
@@ -318,7 +318,7 @@ function PieceworkContent() {
                     {r.batch_number != null ? ` · Партия №${r.batch_number}` : ''}
                   </p>
                 </div>
-                <span className="font-medium text-green-600">{formatMoney(r.line_total)}</span>
+                <span className="font-medium text-success-600">{formatMoney(r.line_total)}</span>
               </div>
             ))}
           </div>
@@ -339,7 +339,7 @@ function PieceworkContent() {
         </div>
       )}
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="card">
         <h2 className="mb-3 text-sm font-semibold text-slate-700">Типы операций и ставки</h2>
         <div className="space-y-2">
           {operationTypes.map((op) => (
@@ -383,7 +383,7 @@ function PieceworkContent() {
             type="button"
             onClick={handleAddOperation}
             disabled={addingOperation || !newOperationName.trim()}
-            className="shrink-0 rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+            className="btn-primary shrink-0"
           >
             {addingOperation ? '…' : 'Добавить'}
           </button>

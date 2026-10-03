@@ -71,7 +71,7 @@ function TimesheetControlContent() {
         </label>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
       {!loading && employees.length === 0 && <p className="text-sm text-slate-400">Сотрудников в этом цехе пока нет</p>}
 
@@ -82,12 +82,12 @@ function TimesheetControlContent() {
             return (
               <div
                 key={emp.id}
-                className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-4"
+                className="flex items-center justify-between gap-2 card"
               >
                 <span className="min-w-0 truncate font-medium text-slate-800">{emp.name}</span>
                 <span
                   className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium ${
-                    present ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
+                    present ? 'bg-success-100 text-success-700' : 'bg-slate-100 text-slate-500'
                   }`}
                 >
                   {present ? 'Пришёл' : 'Не пришёл'}

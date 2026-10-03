@@ -42,7 +42,7 @@ function ProductivityContent() {
         <p className="mt-1 text-sm text-slate-500">Работа сотрудников цеха по дням, операциям и заработку</p>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
 
       <ProductivityBoard
         employees={employees}

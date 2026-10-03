@@ -2,7 +2,140 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  ПАЛИТРА — единственное место, где задаются цвета приложения.
+  Поменять палитру = поправить значения ниже; все оттенки (фоны плашек,
+  границы, наведение) считаются от них через color-mix в tailwind.config.js.
+
+  Цвет несёт смысл, остальное нейтральное:
+    красный  — только долги, ошибки, брак
+    зелёный  — только полученные деньги и успех
+    жёлтый   — только предупреждения («без цены», мало остатка)
+    акцент   — главные кнопки, активная вкладка, ссылки, столбцы графиков
+*/
+:root {
+  --brand: #0f2a47; /* боковое меню, нижняя панель, заголовки */
+  --accent: #1d4e89; /* главные кнопки, активная вкладка, ссылки, графики */
+  --nav-muted: #9db2cc; /* неактивные пункты меню на тёмном фоне */
+  --nav-active: #e6edf5; /* активный пункт меню */
+  --page: #f4f6f9; /* фон страниц */
+  --card: #ffffff; /* карточки */
+  --text-secondary: #4a5b70; /* второстепенный текст */
+  --danger: #b42318;
+  --success: #1e7b4a;
+  --warning: #b7791f;
+}
+
 html,
 body {
   height: 100%;
+}
+
+body {
+  background: var(--page);
+  color: var(--brand);
+  /* Цифры одинаковой ширины везде: суммы в столбце не «пляшут». */
+  font-variant-numeric: tabular-nums;
+  -webkit-text-size-adjust: 100%;
+}
+
+/*
+  Общие компоненты. Экраны собираются из них, чтобы кнопки, карточки,
+  поля и таблицы выглядели одинаково везде. Высота кнопок на телефоне —
+  не меньше 44 px (удобно попадать пальцем), на десктопе компактнее.
+*/
+@layer components {
+  .btn {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md border border-transparent px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[38px] sm:py-2;
+  }
+  .btn-primary {
+    @apply btn bg-accent-600 text-white hover:bg-accent-700 active:bg-accent-800;
+  }
+  .btn-secondary {
+    @apply btn border-slate-300 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100;
+  }
+  .btn-danger {
+    @apply btn border-danger-200 bg-white text-danger-600 hover:bg-danger-50 active:bg-danger-100;
+  }
+  .btn-success {
+    @apply btn bg-success-600 text-white hover:bg-success-700 active:bg-success-800;
+  }
+  /* Мелкая кнопка внутри строки списка/карточки: на телефоне тоже 40 px. */
+  .btn-sm {
+    @apply min-h-[40px] px-3 py-1.5 text-xs sm:min-h-[32px];
+  }
+
+  .card {
+    @apply rounded-lg border border-slate-200 bg-white p-4;
+  }
+
+  .input {
+    @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-accent-600 focus:outline-none focus:ring-1 focus:ring-accent-600 sm:text-sm;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+  .badge-neutral {
+    @apply badge bg-slate-100 text-slate-600;
+  }
+  .badge-success {
+    @apply badge bg-success-50 text-success-700;
+  }
+  .badge-danger {
+    @apply badge bg-danger-50 text-danger-700;
+  }
+  .badge-warning {
+    @apply badge bg-warning-50 text-warning-700;
+  }
+
+  /* Столбец с деньгами в таблице: вправо, цифры одной ширины, без переноса. */
+  .num {
+    @apply whitespace-nowrap text-right tabular-nums;
+  }
+}
+
+@layer components {
+  /* Малые «тональные» кнопки внутри строк и карточек (Изменить / Удалить / Отметить…) */
+  .btn-tonal {
+    @apply btn btn-sm bg-accent-50 text-accent-700 hover:bg-accent-100;
+  }
+  .btn-tonal-danger {
+    @apply btn btn-sm bg-danger-50 text-danger-700 hover:bg-danger-100;
+  }
+  .btn-tonal-success {
+    @apply btn btn-sm bg-success-50 text-success-700 hover:bg-success-100;
+  }
+}
+
+/* Горизонтально прокручиваемые полосы (вкладки) без видимой полосы прокрутки. */
+@layer utilities {
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer components {
+  /* Текстовые кнопки без заливки: «Назад», «Отмена», «Убрать», «+ Добавить размер». */
+  .btn-link {
+    @apply inline-flex min-h-[44px] items-center gap-1 text-sm font-medium text-accent-600 hover:underline sm:min-h-0;
+  }
+  .btn-ghost {
+    @apply inline-flex min-h-[44px] items-center justify-center rounded-md px-3 text-sm font-medium text-accent-600 active:bg-accent-50 sm:min-h-0 sm:py-1.5;
+  }
+  .btn-ghost-danger {
+    @apply inline-flex min-h-[44px] items-center justify-center rounded-md px-3 text-sm font-medium text-danger-600 active:bg-danger-50 sm:min-h-0 sm:py-1.5;
+  }
+  .btn-ghost-muted {
+    @apply inline-flex min-h-[44px] items-center justify-center rounded-md px-3 text-sm font-medium text-slate-500 active:bg-slate-100 sm:min-h-0 sm:py-1.5;
+  }
+  .btn-dashed {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600 active:bg-slate-50 sm:min-h-0;
+  }
+  .btn-dashed-accent {
+    @apply btn-dashed border-accent-300 text-accent-600 active:bg-accent-50;
+  }
 }

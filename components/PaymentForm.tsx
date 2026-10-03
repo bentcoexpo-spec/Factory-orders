@@ -74,7 +74,7 @@ export default function PaymentForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+    <form onSubmit={handleSubmit} className="space-y-3 card">
       <h2 className="text-sm font-semibold text-slate-700">Внести оплату</h2>
 
       {!fixedClient && (
@@ -92,7 +92,7 @@ export default function PaymentForm({
             min={0}
             step="0.01"
             inputMode="decimal"
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+            className="input"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
           />
@@ -101,7 +101,7 @@ export default function PaymentForm({
           <span className="mb-1 block text-xs font-medium text-slate-500">Дата оплаты *</span>
           <input
             type="date"
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+            className="input"
             value={paidAt}
             onChange={(e) => setPaidAt(e.target.value)}
           />
@@ -109,7 +109,7 @@ export default function PaymentForm({
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-500">Комментарий</span>
           <input
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+            className="input"
             placeholder="наличные, перевод…"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
@@ -119,13 +119,13 @@ export default function PaymentForm({
 
       <PhotoPicker files={files} onChange={setFiles} />
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {warning && <p className="text-sm text-amber-700">{warning}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
+      {warning && <p className="text-sm text-warning-700">{warning}</p>}
 
       <button
         type="submit"
         disabled={saving}
-        className="w-full rounded-md bg-indigo-600 px-4 py-3 text-sm font-medium text-white disabled:opacity-50 sm:w-auto sm:py-2.5"
+        className="btn-primary w-full sm:w-auto"
       >
         {saving ? 'Сохранение…' : 'Внести оплату'}
       </button>

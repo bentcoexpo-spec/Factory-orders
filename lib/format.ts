@@ -4,7 +4,9 @@
 // числа. Сум на практике не делят на более мелкие единицы, поэтому
 // округляем до целых, как и раньше.
 export function formatMoney(value: number) {
-  return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(value)} сум`;
+  // Неразрывный пробел перед «сум» — иначе слово переносится на новую строку
+  // отдельно от числа. Разделитель тысяч у Intl для ru-RU тоже неразрывный.
+  return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(value)}\u00a0сум`;
 }
 
 export function formatDate(value: string) {

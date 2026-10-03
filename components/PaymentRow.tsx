@@ -96,7 +96,7 @@ export default function PaymentRow({
             {payment.photo_count > 0 && ` · фото: ${payment.photo_count}`}
           </p>
         </div>
-        <span className="shrink-0 font-semibold text-green-700">{formatMoney(payment.amount)}</span>
+        <span className="shrink-0 font-semibold text-success-700">{formatMoney(payment.amount)}</span>
       </button>
 
       {open && (
@@ -113,7 +113,7 @@ export default function PaymentRow({
                 <button
                   type="button"
                   onClick={() => setEditing(true)}
-                  className="rounded-md bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-600"
+                  className="btn-tonal"
                 >
                   Изменить
                 </button>
@@ -121,7 +121,7 @@ export default function PaymentRow({
                   type="button"
                   disabled={busy}
                   onClick={handleDelete}
-                  className="rounded-md bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 disabled:opacity-50"
+                  className="btn-tonal-danger"
                 >
                   Удалить
                 </button>
@@ -137,7 +137,7 @@ export default function PaymentRow({
                     min={0}
                     step="0.01"
                     inputMode="decimal"
-                    className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                    className="input"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                   />
@@ -146,7 +146,7 @@ export default function PaymentRow({
                   <span className="mb-1 block text-xs font-medium text-slate-500">Дата</span>
                   <input
                     type="date"
-                    className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                    className="input"
                     value={paidAt}
                     onChange={(e) => setPaidAt(e.target.value)}
                   />
@@ -154,7 +154,7 @@ export default function PaymentRow({
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-500">Комментарий</span>
                   <input
-                    className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                    className="input"
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
                   />
@@ -165,7 +165,7 @@ export default function PaymentRow({
                   type="button"
                   disabled={busy}
                   onClick={handleSave}
-                  className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  className="btn-primary"
                 >
                   {busy ? 'Сохранение…' : 'Сохранить'}
                 </button>
@@ -178,14 +178,14 @@ export default function PaymentRow({
                     setComment(payment.comment ?? '');
                     setError(null);
                   }}
-                  className="rounded-md px-3 py-2 text-sm font-medium text-slate-500"
+                  className="btn-ghost-muted"
                 >
                   Отмена
                 </button>
               </div>
             </div>
           )}
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-danger-600">{error}</p>}
         </div>
       )}
     </div>

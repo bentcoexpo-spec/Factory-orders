@@ -30,11 +30,11 @@ export default function ExcelButton({
         type="button"
         onClick={handleClick}
         disabled={busy || disabled}
-        className="rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm font-medium text-green-700 active:bg-green-100 disabled:opacity-50"
+        className="rounded-md border border-success-300 bg-success-50 px-3 py-2 text-sm font-medium text-success-700 active:bg-success-100 disabled:opacity-50"
       >
         {busy ? 'Готовлю файл…' : 'Скачать в Excel'}
       </button>
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-1 text-xs text-danger-600">{error}</p>}
     </div>
   );
 }

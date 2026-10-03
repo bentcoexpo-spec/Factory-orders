@@ -30,12 +30,12 @@ export default function LoginPage() {
         <h1 className="text-2xl font-semibold text-slate-900">Вход</h1>
         <p className="mt-1 text-sm text-slate-500">Учёт заказов фабрики</p>
       </div>
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
+      <form onSubmit={handleSubmit} className="card space-y-4">
         <input
           type="email"
           required
           autoComplete="email"
-          className="w-full rounded-md border border-slate-300 px-3 py-3 text-base"
+          className="input py-3"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -44,16 +44,16 @@ export default function LoginPage() {
           type="password"
           required
           autoComplete="current-password"
-          className="w-full rounded-md border border-slate-300 px-3 py-3 text-base"
+          className="input py-3"
           placeholder="Пароль"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-danger-600">{error}</p>}
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-md bg-indigo-600 px-4 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          className="btn-primary w-full"
         >
           {loading ? 'Вход…' : 'Войти'}
         </button>

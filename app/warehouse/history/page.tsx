@@ -66,8 +66,8 @@ function HistoryContent() {
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`rounded-full px-4 py-2 text-sm font-medium ${
-              tab === t.key ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+            className={`rounded-full px-4 py-2.5 text-sm font-medium ${
+              tab === t.key ? 'bg-accent-600 text-white' : 'bg-slate-100 text-slate-600'
             }`}
           >
             {t.label}
@@ -75,7 +75,7 @@ function HistoryContent() {
         ))}
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
       {!loading && orders.length === 0 && <p className="text-sm text-slate-400">{EMPTY_TEXT[tab]}</p>}
 
@@ -92,12 +92,12 @@ function HistoryContent() {
                 <div>
                   <span className="font-medium text-slate-800">{o.client_name}</span>
                   {o.status === 'returned' && (
-                    <span className="ml-2 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
+                    <span className="ml-2 rounded-full bg-warning-100 px-2 py-0.5 text-xs font-medium text-warning-700">
                       Возвращено
                     </span>
                   )}
                   {o.completion_reason && (
-                    <span className="ml-2 text-xs text-amber-600">{COMPLETION_REASON_LABELS[o.completion_reason]}</span>
+                    <span className="ml-2 text-xs text-warning-600">{COMPLETION_REASON_LABELS[o.completion_reason]}</span>
                   )}
                   {tab === 'issued' && o.status === 'issued' && o.issued_by_name && (
                     <span className="ml-2 text-xs text-slate-500">выдал {o.issued_by_name}</span>

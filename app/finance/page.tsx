@@ -14,7 +14,7 @@ import { useFinanceFilters } from '@/components/FinanceFilters';
 
 function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="card">
       <p className="text-xs uppercase text-slate-500">{label}</p>
       <p className="mt-1 text-lg font-semibold text-slate-900 sm:text-xl">{value}</p>
       {hint && <p className="mt-0.5 text-xs text-slate-400">{hint}</p>}
@@ -95,7 +95,7 @@ function DebtsContent() {
         <ExcelButton onExport={exportExcel} disabled={debts.length === 0} />
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
         <StatCard label="Общий долг клиентов" value={formatMoney(stats.totalDebt)} />
@@ -103,7 +103,7 @@ function DebtsContent() {
         <StatCard label="Авансы клиентов" value={formatMoney(stats.advances)} hint="оплатили больше, чем выдано" />
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="card">
         <h2 className="mb-3 text-sm font-semibold text-slate-700">Клиенты</h2>
         {!loaded && <p className="text-sm text-slate-400">Загрузка…</p>}
         {loaded && debts.length === 0 && <p className="text-sm text-slate-400">Клиентов нет</p>}
@@ -120,7 +120,7 @@ function DebtsContent() {
               </div>
               <span
                 className={`shrink-0 text-sm font-semibold ${
-                  c.debt > 0 ? 'text-red-600' : c.debt < 0 ? 'text-green-600' : 'text-slate-400'
+                  c.debt > 0 ? 'text-danger-600' : c.debt < 0 ? 'text-success-600' : 'text-slate-400'
                 }`}
               >
                 {c.debt < 0 ? `Аванс ${formatMoney(-c.debt)}` : formatMoney(c.debt)}

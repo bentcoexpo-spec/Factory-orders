@@ -125,7 +125,7 @@ function AnalyticsContent() {
               <div key={c.name} className="flex items-center gap-3">
                 <span className="w-32 shrink-0 truncate text-xs text-slate-600">{c.name}</span>
                 <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full bg-blue-500" style={{ width: `${(c.total / maxClientTotal) * 100}%` }} />
+                  <div className="h-full bg-accent-600" style={{ width: `${(c.total / maxClientTotal) * 100}%` }} />
                 </div>
                 <span className="w-20 text-right text-xs text-slate-500">{formatMoney(c.total)}</span>
               </div>
@@ -140,7 +140,7 @@ function AnalyticsContent() {
               <div key={p.name} className="flex items-center gap-3">
                 <span className="w-32 shrink-0 truncate text-xs text-slate-600">{p.name}</span>
                 <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full bg-amber-500" style={{ width: `${(p.qty / maxProductQty) * 100}%` }} />
+                  <div className="h-full bg-warning-500" style={{ width: `${(p.qty / maxProductQty) * 100}%` }} />
                 </div>
                 <span className="w-16 text-right text-xs text-slate-500">{p.qty}</span>
               </div>
@@ -162,7 +162,7 @@ export default function AnalyticsPage() {
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="card">
       <p className="text-xs uppercase text-slate-500">{label}</p>
       <p className="mt-1 text-xl font-semibold text-slate-900">{value}</p>
     </div>
@@ -171,7 +171,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="card">
       <h2 className="mb-3 text-sm font-semibold text-slate-700">{title}</h2>
       {children}
     </div>

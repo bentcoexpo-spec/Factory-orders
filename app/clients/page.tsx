@@ -119,7 +119,7 @@ function ClientsContent() {
         <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Клиенты</h1>
         <p className="mt-1 text-sm text-slate-500">
           Список клиентов фабрики. Долг и оплаты — в разделе{' '}
-          <Link href="/finance" className="text-indigo-600 hover:underline">
+          <Link href="/finance" className="text-accent-600 hover:underline">
             «Финансы»
           </Link>
           .
@@ -128,12 +128,12 @@ function ClientsContent() {
 
       <form
         onSubmit={handleSubmit}
-        className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-5"
+        className="grid gap-3 card sm:grid-cols-2 lg:grid-cols-5"
       >
         <label className="block text-sm sm:col-span-1">
           <span className="mb-1 block text-xs font-medium text-slate-500">Название / ФИО *</span>
           <input
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+            className="input"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             required
@@ -143,7 +143,7 @@ function ClientsContent() {
           <span className="mb-1 block text-xs font-medium text-slate-500">Телефон</span>
           <input
             type="tel"
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+            className="input"
             value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
           />
@@ -152,7 +152,7 @@ function ClientsContent() {
           <span className="mb-1 block text-xs font-medium text-slate-500">Email</span>
           <input
             type="email"
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+            className="input"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
@@ -160,7 +160,7 @@ function ClientsContent() {
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-500">Адрес</span>
           <input
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+            className="input"
             value={form.address}
             onChange={(e) => setForm({ ...form, address: e.target.value })}
           />
@@ -168,7 +168,7 @@ function ClientsContent() {
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-500">Тип клиента</span>
           <select
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+            className="input"
             value={form.category}
             onChange={(e) => setForm({ ...form, category: e.target.value as ClientCategory | '' })}
           >
@@ -180,13 +180,13 @@ function ClientsContent() {
         <button
           type="submit"
           disabled={saving}
-          className="rounded-md bg-indigo-600 px-4 py-3 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:col-span-2 sm:py-2.5 sm:text-sm lg:col-span-1"
+          className="btn-primary sm:col-span-2 lg:col-span-1"
         >
           {saving ? 'Сохранение…' : 'Добавить клиента'}
         </button>
       </form>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
 
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
       {!loading && clients.length === 0 && <p className="text-sm text-slate-400">Клиентов пока нет</p>}
@@ -206,7 +206,7 @@ function ClientsContent() {
                   saving={saving}
                 />
               ) : (
-                <div key={c.id} className="rounded-lg border border-slate-200 bg-white p-4">
+                <div key={c.id} className="card">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="font-medium text-slate-800">{c.name}</p>
@@ -219,13 +219,13 @@ function ClientsContent() {
                     <div className="flex shrink-0 gap-1">
                       <button
                         onClick={() => startEdit(c)}
-                        className="rounded-md px-2 py-1 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+                        className="btn-ghost"
                       >
                         Изменить
                       </button>
                       <button
                         onClick={() => handleDelete(c.id)}
-                        className="rounded-md px-2 py-1 text-sm font-medium text-red-600 active:bg-red-50"
+                        className="btn-ghost-danger"
                       >
                         Удалить
                       </button>
@@ -292,10 +292,10 @@ function ClientsContent() {
                       <td className="px-4 py-3 text-slate-500">{formatDate(c.created_at)}</td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-3">
-                          <button onClick={() => startEdit(c)} className="text-xs font-medium text-indigo-600 hover:underline">
+                          <button onClick={() => startEdit(c)} className="text-xs font-medium text-accent-600 hover:underline">
                             Изменить
                           </button>
-                          <button onClick={() => handleDelete(c.id)} className="text-xs font-medium text-red-600 hover:underline">
+                          <button onClick={() => handleDelete(c.id)} className="btn-ghost-danger">
                             Удалить
                           </button>
                         </div>
@@ -321,7 +321,7 @@ function fields(
       <label className="block text-sm">
         <span className="mb-1 block text-xs font-medium text-slate-500">Название / ФИО *</span>
         <input
-          className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+          className="input"
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
         />
@@ -330,7 +330,7 @@ function fields(
         <span className="mb-1 block text-xs font-medium text-slate-500">Телефон</span>
         <input
           type="tel"
-          className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+          className="input"
           value={form.phone}
           onChange={(e) => setForm({ ...form, phone: e.target.value })}
         />
@@ -339,7 +339,7 @@ function fields(
         <span className="mb-1 block text-xs font-medium text-slate-500">Email</span>
         <input
           type="email"
-          className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+          className="input"
           value={form.email}
           onChange={(e) => setForm({ ...form, email: e.target.value })}
         />
@@ -347,7 +347,7 @@ function fields(
       <label className="block text-sm">
         <span className="mb-1 block text-xs font-medium text-slate-500">Адрес</span>
         <input
-          className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+          className="input"
           value={form.address}
           onChange={(e) => setForm({ ...form, address: e.target.value })}
         />
@@ -355,7 +355,7 @@ function fields(
       <label className="block text-sm">
         <span className="mb-1 block text-xs font-medium text-slate-500">Тип клиента</span>
         <select
-          className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+          className="input"
           value={form.category}
           onChange={(e) => setForm({ ...form, category: e.target.value as ClientCategory | '' })}
         >
@@ -382,17 +382,17 @@ function EditCard({
   saving: boolean;
 }) {
   return (
-    <div className="space-y-3 rounded-lg border border-indigo-300 bg-indigo-50/40 p-4">
+    <div className="space-y-3 rounded-lg border border-accent-300 bg-accent-50 p-4">
       {fields(form, setForm)}
       <div className="flex gap-2">
         <button
           onClick={onSave}
           disabled={saving}
-          className="flex-1 rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+          className="btn-primary flex-1"
         >
           {saving ? 'Сохранение…' : 'Сохранить'}
         </button>
-        <button onClick={onCancel} disabled={saving} className="rounded-md px-4 py-2.5 text-sm font-medium text-slate-500">
+        <button onClick={onCancel} disabled={saving} className="btn-ghost-muted">
           Отмена
         </button>
       </div>
@@ -420,11 +420,11 @@ function EditRow({
         <button
           onClick={onSave}
           disabled={saving}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="btn-primary"
         >
           {saving ? 'Сохранение…' : 'Сохранить'}
         </button>
-        <button onClick={onCancel} disabled={saving} className="rounded-md px-4 py-2 text-sm font-medium text-slate-500">
+        <button onClick={onCancel} disabled={saving} className="btn-ghost-muted">
           Отмена
         </button>
       </div>

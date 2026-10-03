@@ -210,8 +210,8 @@ function BatchForm() {
         <p className="mt-1 text-sm text-slate-500">Отчёт о результате раскроя</p>
       </div>
 
-      {loadError && !selectedIssue && <p className="text-sm text-red-600">{loadError}</p>}
-      {success && <p className="text-sm font-medium text-green-600">{success}</p>}
+      {loadError && !selectedIssue && <p className="text-sm text-danger-600">{loadError}</p>}
+      {success && <p className="text-sm font-medium text-success-600">{success}</p>}
 
       {!selectedIssue && (
         <div className="space-y-2">
@@ -225,7 +225,7 @@ function BatchForm() {
               key={issue.id}
               type="button"
               onClick={() => selectIssue(issue)}
-              className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white p-4 text-left"
+              className="flex w-full items-center justify-between card text-left"
             >
               <div>
                 <p className="font-medium text-slate-800">
@@ -244,7 +244,7 @@ function BatchForm() {
 
       {selectedIssue && (
         <div className="space-y-6">
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="card">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-base font-medium text-slate-800">
@@ -258,14 +258,14 @@ function BatchForm() {
               <button
                 type="button"
                 onClick={backToPending}
-                className="rounded-md px-2 py-1.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+                className="btn-ghost"
               >
                 Назад
               </button>
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="card">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">В какой цех идёт партия на пошив?</h2>
             <div className="flex gap-2">
               {SHOPS.map((s) => (
@@ -275,7 +275,7 @@ function BatchForm() {
                   onClick={() => setShop(s)}
                   className={`flex-1 rounded-md border px-4 py-2.5 text-sm font-medium ${
                     shop === s
-                      ? 'border-indigo-600 bg-indigo-600 text-white'
+                      ? 'border-accent-600 bg-accent-600 text-white'
                       : 'border-slate-300 bg-white text-slate-600 active:bg-slate-50'
                   }`}
                 >
@@ -286,7 +286,7 @@ function BatchForm() {
           </div>
 
           {openRequests.length > 0 && (
-            <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="card">
               <h2 className="mb-3 text-sm font-semibold text-slate-700">По какой заявке кроите? (по желанию)</h2>
               <div className="space-y-2">
                 <button
@@ -294,7 +294,7 @@ function BatchForm() {
                   onClick={() => setSelectedRequestId(null)}
                   className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left text-sm ${
                     selectedRequestId === null
-                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                      ? 'border-accent-600 bg-accent-50 text-accent-700'
                       : 'border-slate-200 bg-white text-slate-600'
                   }`}
                 >
@@ -307,7 +307,7 @@ function BatchForm() {
                     onClick={() => setSelectedRequestId(r.id)}
                     className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left text-sm ${
                       selectedRequestId === r.id
-                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                        ? 'border-accent-600 bg-accent-50 text-accent-700'
                         : 'border-slate-200 bg-white text-slate-600'
                     }`}
                   >
@@ -329,7 +329,7 @@ function BatchForm() {
             <div className="space-y-2">
               <h2 className="text-sm font-semibold text-slate-700">Товары в этой партии</h2>
               {products.map((p, i) => (
-                <div key={i} className="flex items-start justify-between rounded-lg border border-slate-200 bg-white p-4">
+                <div key={i} className="flex items-start justify-between card">
                   <div>
                     <p className="font-medium text-slate-800">{p.name}</p>
                     <p className="text-xs text-slate-400">{p.rows.map((r) => `${r.size} ${r.quantity}`).join(', ')}</p>
@@ -337,7 +337,7 @@ function BatchForm() {
                   <button
                     type="button"
                     onClick={() => removeProduct(i)}
-                    className="shrink-0 rounded-md px-2 py-1.5 text-sm font-medium text-red-500 active:bg-red-50"
+                    className="btn-ghost-danger shrink-0"
                   >
                     Убрать
                   </button>
@@ -346,7 +346,7 @@ function BatchForm() {
             </div>
           )}
 
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="card">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">
               {products.length > 0 ? 'Добавить ещё товар' : 'Какой товар вышел из этого раскроя?'}
             </h2>
@@ -354,7 +354,7 @@ function BatchForm() {
               <span className="mb-1 block text-xs font-medium text-slate-500">Название товара</span>
               <input
                 list="product-name-suggestions"
-                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                className="input"
                 placeholder="например Футболка"
                 value={productName}
                 onChange={(e) => setProductName(e.target.value)}
@@ -389,7 +389,7 @@ function BatchForm() {
                     type="button"
                     onClick={() => removeRow(i)}
                     disabled={rows.length === 1}
-                    className="shrink-0 rounded-md px-2 py-2.5 text-sm font-medium text-red-500 disabled:opacity-30"
+                    className="btn-ghost-danger shrink-0"
                     aria-label="Убрать строку"
                   >
                     ×
@@ -401,28 +401,28 @@ function BatchForm() {
               <button
                 type="button"
                 onClick={addRow}
-                className="rounded-md border border-dashed border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-600 active:bg-slate-50"
+                className="btn-dashed"
               >
                 + Добавить размер
               </button>
               <button
                 type="button"
                 onClick={addProductToBatch}
-                className="rounded-md border border-dashed border-indigo-300 px-3 py-2.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+                className="btn-dashed-accent"
               >
                 + Добавить товар в партию
               </button>
             </div>
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-danger-600">{error}</p>}
 
           {products.length > 0 && (
             <button
               type="button"
               onClick={handleSaveBatch}
               disabled={saving || !shop}
-              className="w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
+              className="btn-primary w-full sm:w-auto"
             >
               {saving ? 'Сохранение…' : 'Сохранить партию'}
             </button>
@@ -431,7 +431,7 @@ function BatchForm() {
       )}
 
       {recent.length > 0 && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <h2 className="mb-3 text-sm font-semibold text-slate-700">Недавние партии</h2>
           <div className="space-y-3">
             {recent.map((b) => (
@@ -448,7 +448,7 @@ function BatchForm() {
                 </div>
                 <p className="text-xs text-slate-400">
                   {formatDate(b.created_at)} · {SHOP_LABELS[b.shop]}
-                  {b.request_id && <span className="text-indigo-500"> · по заявке</span>}
+                  {b.request_id && <span className="text-accent-500"> · по заявке</span>}
                 </p>
                 <div className="mt-1 space-y-0.5">
                   {b.products.map((p, i) => (

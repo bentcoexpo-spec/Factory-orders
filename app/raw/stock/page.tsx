@@ -16,13 +16,13 @@ function IconChevronLeft() {
 
 function ReceiptCard({ r }: { r: RawMaterialReceipt }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="card">
       <div className="flex items-start justify-between gap-2">
         <p className="font-medium text-slate-800">
           {formatDate(r.created_at)}
           {r.color_code && <span className="text-slate-400"> · код {r.color_code}</span>}
         </p>
-        <span className="font-semibold text-green-600">+{r.rolls} рул.</span>
+        <span className="font-semibold text-success-600">+{r.rolls} рул.</span>
       </div>
       <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-500">
         {r.weight_kg != null && (
@@ -129,7 +129,7 @@ function RawStockContent() {
         <button
           type="button"
           onClick={() => setSelectedColor(null)}
-          className="flex items-center gap-1 text-sm font-medium text-indigo-600"
+          className="btn-link"
         >
           <IconChevronLeft />
           {selectedMaterial}
@@ -158,7 +158,7 @@ function RawStockContent() {
         <button
           type="button"
           onClick={() => setSelectedMaterial(null)}
-          className="flex items-center gap-1 text-sm font-medium text-indigo-600"
+          className="btn-link"
         >
           <IconChevronLeft />
           Все материалы
@@ -171,11 +171,11 @@ function RawStockContent() {
               key={c.id}
               type="button"
               onClick={() => setSelectedColor(c)}
-              className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white p-4 text-left"
+              className="flex w-full items-center justify-between card text-left"
             >
               <span className="font-medium text-slate-800">{c.color}</span>
               <span
-                className={`text-sm font-medium ${c.stock_rolls <= 0 ? 'text-red-600' : 'text-slate-600'}`}
+                className={`text-sm font-medium ${c.stock_rolls <= 0 ? 'text-danger-600' : 'text-slate-600'}`}
               >
                 {c.stock_rolls} рул.
               </span>
@@ -193,7 +193,7 @@ function RawStockContent() {
         <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Склад сырья</h1>
         <p className="mt-1 text-sm text-slate-500">Остатки материалов по цветам</p>
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
       {groupedMaterials.length === 0 && <p className="text-sm text-slate-400">Материалов пока нет</p>}
       <div className="space-y-2">
         {groupedMaterials.map(([name, list]) => {
@@ -203,7 +203,7 @@ function RawStockContent() {
               key={name}
               type="button"
               onClick={() => setSelectedMaterial(name)}
-              className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white p-4 text-left"
+              className="flex w-full items-center justify-between card text-left"
             >
               <div>
                 <p className="font-medium text-slate-800">{name}</p>

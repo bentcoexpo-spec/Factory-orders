@@ -33,13 +33,13 @@ function CuttingLogContent() {
         <p className="mt-1 text-sm text-slate-500">Все партии раскроя — материал, что вышло, когда</p>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
       {!loading && batches.length === 0 && <p className="text-sm text-slate-400">Партий пока нет</p>}
 
       <div className="space-y-3">
         {batches.map((b) => (
-          <div key={b.id} className="rounded-lg border border-slate-200 bg-white p-4">
+          <div key={b.id} className="card">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="font-medium text-slate-800">

@@ -53,12 +53,12 @@ function ClientDetailContent() {
   }, [params.id]);
 
   if (loading) return <p className="text-sm text-slate-400">Загрузка…</p>;
-  if (!client) return <p className="text-sm text-red-600">{error ?? 'Клиент не найден'}</p>;
+  if (!client) return <p className="text-sm text-danger-600">{error ?? 'Клиент не найден'}</p>;
 
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/finance" className="text-xs font-medium text-indigo-600 hover:underline">
+        <Link href="/finance" className="text-xs font-medium text-accent-600 hover:underline">
           ← Долги
         </Link>
         <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
@@ -75,20 +75,20 @@ function ClientDetailContent() {
         </p>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <p className="text-xs uppercase text-slate-500">Выдано на сумму</p>
           <p className="mt-1 text-lg font-semibold text-slate-900">{formatMoney(debt?.issued_total ?? 0)}</p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <p className="text-xs uppercase text-slate-500">Оплачено</p>
           <p className="mt-1 text-lg font-semibold text-slate-900">{formatMoney(debt?.paid_total ?? 0)}</p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <p className="text-xs uppercase text-slate-500">{(debt?.debt ?? 0) < 0 ? 'Аванс' : 'Долг'}</p>
-          <p className={`mt-1 text-lg font-semibold ${(debt?.debt ?? 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+          <p className={`mt-1 text-lg font-semibold ${(debt?.debt ?? 0) > 0 ? 'text-danger-600' : 'text-success-600'}`}>
             {formatMoney(Math.abs(debt?.debt ?? 0))}
           </p>
         </div>
@@ -96,7 +96,7 @@ function ClientDetailContent() {
 
       <PaymentForm fixedClient={{ id: client.id, name: client.name }} onSaved={load} />
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="card">
         <h2 className="mb-3 text-sm font-semibold text-slate-700">История оплат</h2>
         {payments.length === 0 && <p className="text-sm text-slate-400">Оплат пока не было</p>}
         <div className="divide-y divide-slate-100">
@@ -106,7 +106,7 @@ function ClientDetailContent() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="card">
         <h2 className="mb-3 text-sm font-semibold text-slate-700">История заказов</h2>
         {orders.length === 0 && <p className="text-sm text-slate-400">Заказов пока нет</p>}
         <div className="divide-y divide-slate-100">

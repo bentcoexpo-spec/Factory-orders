@@ -27,12 +27,12 @@ function OrderMeta({ o }: { o: OrderView }) {
   return (
     <>
       {o.status === 'returned' && (
-        <span className="ml-2 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
+        <span className="ml-2 rounded-full bg-warning-100 px-2 py-0.5 text-xs font-medium text-warning-700">
           Возвращено
         </span>
       )}
       {o.completion_reason && (
-        <span className="ml-2 text-xs text-amber-600">{COMPLETION_REASON_LABELS[o.completion_reason]}</span>
+        <span className="ml-2 text-xs text-warning-600">{COMPLETION_REASON_LABELS[o.completion_reason]}</span>
       )}
       {o.status === 'issued' && o.issued_by_name && (
         <span className="ml-2 text-xs text-slate-500">выдал {o.issued_by_name}</span>
@@ -88,7 +88,7 @@ export default function OrdersPage() {
         {role && (
           <Link
             href="/warehouse/order"
-            className="rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-500"
+            className="btn-primary"
           >
             + Новый заказ
           </Link>
@@ -98,8 +98,8 @@ export default function OrdersPage() {
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => setFilter('all')}
-          className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-            filter === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+          className={`rounded-full px-4 py-2.5 text-sm font-medium sm:px-3 sm:py-1.5 sm:text-xs ${
+            filter === 'all' ? 'bg-accent-600 text-white' : 'bg-slate-100 text-slate-600'
           }`}
         >
           Все ({orders.length})
@@ -108,8 +108,8 @@ export default function OrdersPage() {
           <button
             key={s.value}
             onClick={() => setFilter(s.value)}
-            className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-              filter === s.value ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+            className={`rounded-full px-4 py-2.5 text-sm font-medium sm:px-3 sm:py-1.5 sm:text-xs ${
+              filter === s.value ? 'bg-accent-600 text-white' : 'bg-slate-100 text-slate-600'
             }`}
           >
             {s.label} ({orders.filter((o) => o.status === s.value).length})
@@ -117,7 +117,7 @@ export default function OrdersPage() {
         ))}
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
 
       {loading && <p className="text-sm text-slate-400">Загрузка…</p>}
       {!loading && visibleOrders.length === 0 && <p className="text-sm text-slate-400">Заказов не найдено</p>}
@@ -127,7 +127,7 @@ export default function OrdersPage() {
           {/* Мобильная версия — карточки */}
           <div className="space-y-3 sm:hidden">
             {visibleOrders.map((o) => (
-              <div key={o.id} className="rounded-lg border border-slate-200 bg-white p-4">
+              <div key={o.id} className="card">
                 <div className="flex items-start justify-between gap-2">
                   <Link href={`/orders/${o.id}`} className="font-medium text-slate-800">
                     {o.client_name}
@@ -157,7 +157,7 @@ export default function OrdersPage() {
                   </select>
                   <Link
                     href={`/orders/${o.id}`}
-                    className="shrink-0 rounded-md border border-slate-200 px-3 py-2.5 text-sm font-medium text-indigo-600"
+                    className="shrink-0 rounded-md border border-slate-200 px-3 py-2.5 text-sm font-medium text-accent-600"
                   >
                     Детали
                   </Link>
@@ -172,7 +172,7 @@ export default function OrdersPage() {
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-400">
                 <tr>
                   <th className="px-4 py-3">Клиент</th>
-                  {showTotals && <th className="px-4 py-3">Сумма</th>}
+                  {showTotals && <th className="num px-4 py-3">Сумма</th>}
                   <th className="px-4 py-3">Статус</th>
                   <th className="px-4 py-3">Дата</th>
                   <th className="px-4 py-3" />
@@ -188,7 +188,7 @@ export default function OrdersPage() {
                       <OrderMeta o={o} />
                     </td>
                     {showTotals && (
-                      <td className="px-4 py-3 text-slate-600">{o.total !== null ? formatMoney(o.total) : '—'}</td>
+                      <td className="num px-4 py-3 text-slate-600">{o.total !== null ? formatMoney(o.total) : '—'}</td>
                     )}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -208,7 +208,7 @@ export default function OrdersPage() {
                     </td>
                     <td className="px-4 py-3 text-slate-500">{formatDate(dateFor(o))}</td>
                     <td className="px-4 py-3 text-right">
-                      <Link href={`/orders/${o.id}`} className="text-xs font-medium text-indigo-600 hover:underline">
+                      <Link href={`/orders/${o.id}`} className="text-xs font-medium text-accent-600 hover:underline">
                         Детали
                       </Link>
                     </td>

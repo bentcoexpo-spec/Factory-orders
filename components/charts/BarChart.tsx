@@ -52,7 +52,7 @@ export default function BarChart({
               aria-label={`${p.label}: ${formatValue(p.value)}`}
             >
               <div
-                className={`w-full rounded-t ${isActive ? 'bg-indigo-600' : 'bg-indigo-300 group-hover:bg-indigo-400'}`}
+                className={`w-full rounded-t ${isActive ? 'bg-accent-800' : 'bg-accent-600 group-hover:bg-accent-700'}`}
                 style={{ height: `${heightPct}%` }}
               />
             </button>

@@ -126,9 +126,9 @@ function ReceiptsContent() {
         <ExcelButton onExport={exportExcel} disabled={receipts.length === 0} />
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
       {unpricedCount > 0 && (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700">
+        <p className="rounded-md bg-warning-50 px-3 py-2 text-sm font-medium text-warning-700">
           Чеков без цены по части позиций: {unpricedCount} — откройте чек, чтобы вписать цену.
         </p>
       )}
@@ -153,12 +153,12 @@ function ReceiptsContent() {
                 <p className="truncate font-medium text-slate-800">
                   {r.client_name}
                   {r.status === 'returned' && (
-                    <span className="ml-2 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
+                    <span className="ml-2 rounded-full bg-warning-100 px-2 py-0.5 text-xs font-medium text-warning-700">
                       Возвращено
                     </span>
                   )}
                   {r.has_unpriced_item && (
-                    <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                    <span className="ml-2 rounded-full bg-warning-100 px-2 py-0.5 text-xs font-medium text-warning-700">
                       без цены
                     </span>
                   )}

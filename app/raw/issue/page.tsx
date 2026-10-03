@@ -133,8 +133,8 @@ function IssueForm() {
         <p className="mt-1 text-sm text-slate-500">Выдача сырья на раскрой</p>
       </div>
 
-      {loadError && <p className="text-sm text-red-600">{loadError}</p>}
-      {success && <p className="text-sm font-medium text-green-600">{success}</p>}
+      {loadError && <p className="text-sm text-danger-600">{loadError}</p>}
+      {success && <p className="text-sm font-medium text-success-600">{success}</p>}
 
       {!selected && !selectedMaterial && (
         <div className="space-y-2">
@@ -146,7 +146,7 @@ function IssueForm() {
                 key={name}
                 type="button"
                 onClick={() => setSelectedMaterial(name)}
-                className={`flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white p-4 text-left ${
+                className={`flex w-full items-center justify-between card text-left ${
                   total <= 0 ? 'opacity-40' : ''
                 }`}
               >
@@ -168,7 +168,7 @@ function IssueForm() {
           <button
             type="button"
             onClick={() => setSelectedMaterial(null)}
-            className="flex items-center gap-1 text-sm font-medium text-indigo-600"
+            className="btn-link"
           >
             <IconChevronLeft />
             Все материалы
@@ -198,7 +198,7 @@ function IssueForm() {
 
       {selected && (
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="card">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-base font-medium text-slate-800">{selected.material_name}</p>
@@ -208,14 +208,14 @@ function IssueForm() {
               <button
                 type="button"
                 onClick={() => setSelected(null)}
-                className="rounded-md px-2 py-1.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+                className="btn-ghost"
               >
                 Изменить
               </button>
             </div>
           </div>
 
-          <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+          <div className="space-y-3 card">
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-500">
                 Сколько рулонов забрать *{' '}
@@ -227,7 +227,7 @@ function IssueForm() {
                 max={selected.stock_rolls}
                 step="1"
                 inputMode="numeric"
-                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                className="input"
                 value={rolls}
                 onChange={(e) => setRolls(e.target.value)}
               />
@@ -235,7 +235,7 @@ function IssueForm() {
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-500">Кто забирает *</span>
               <input
-                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                className="input"
                 placeholder="Имя закройщика"
                 value={takenBy}
                 onChange={(e) => setTakenBy(e.target.value)}
@@ -243,12 +243,12 @@ function IssueForm() {
             </label>
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-danger-600">{error}</p>}
 
           <button
             type="submit"
             disabled={saving}
-            className="w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
+            className="btn-primary w-full sm:w-auto"
           >
             {saving ? 'Сохранение…' : 'Выдать'}
           </button>
@@ -256,7 +256,7 @@ function IssueForm() {
       )}
 
       {recent.length > 0 && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <h2 className="mb-3 text-sm font-semibold text-slate-700">Недавние выдачи</h2>
           <div className="space-y-2">
             {recent.map((r) => (
@@ -273,7 +273,7 @@ function IssueForm() {
                     {formatDate(r.created_at)} · {r.taken_by}
                   </p>
                 </div>
-                <span className="font-medium text-red-600">−{r.rolls} рул.</span>
+                <span className="font-medium text-danger-600">−{r.rolls} рул.</span>
               </div>
             ))}
           </div>

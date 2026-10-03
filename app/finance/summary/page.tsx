@@ -29,9 +29,9 @@ function StatCard({
   hint?: string;
   tone?: 'neutral' | 'good' | 'bad';
 }) {
-  const color = tone === 'good' ? 'text-green-700' : tone === 'bad' ? 'text-red-600' : 'text-slate-900';
+  const color = tone === 'good' ? 'text-success-700' : tone === 'bad' ? 'text-danger-600' : 'text-slate-900';
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="card">
       <p className="text-xs uppercase text-slate-500">{label}</p>
       <p className={`mt-1 text-lg font-semibold sm:text-xl ${color}`}>{value}</p>
       {hint && <p className="mt-0.5 text-xs text-slate-400">{hint}</p>}
@@ -41,7 +41,7 @@ function StatCard({
 
 function Panel({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="card">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
         {action}
@@ -92,7 +92,7 @@ function SummaryContent() {
         </p>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
       {!summary && !error && <p className="text-sm text-slate-400">Загрузка…</p>}
 
       {summary && (

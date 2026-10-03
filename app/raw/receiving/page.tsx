@@ -210,19 +210,19 @@ function ReceivingForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <h2 className="mb-3 text-sm font-semibold text-slate-700">Материал</h2>
 
           {material ? (
             <div className="flex items-center justify-between rounded-md border border-slate-300 bg-slate-50 px-3 py-2.5">
               <p className="text-base font-medium text-slate-800">
                 {material.name}
-                {!material.id && <span className="ml-2 text-xs font-normal text-indigo-600">новый</span>}
+                {!material.id && <span className="ml-2 text-xs font-normal text-accent-600">новый</span>}
               </p>
               <button
                 type="button"
                 onClick={resetForm}
-                className="rounded-md px-2 py-1.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+                className="btn-ghost"
               >
                 Изменить
               </button>
@@ -230,7 +230,7 @@ function ReceivingForm() {
           ) : (
             <>
               <input
-                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                className="input"
                 placeholder="Тип материала, например 30/1-PENYE-SUPREM 8% LYC"
                 value={materialQuery}
                 onChange={(e) => setMaterialQuery(e.target.value)}
@@ -257,7 +257,7 @@ function ReceivingForm() {
                 <button
                   type="button"
                   onClick={() => selectMaterial({ id: null, name: materialQuery.trim() })}
-                  className="mt-2 w-full rounded-md border border-dashed border-indigo-300 px-3 py-2.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+                  className="btn-dashed-accent mt-2 w-full"
                 >
                   + Новый материал «{materialQuery.trim()}»
                 </button>
@@ -267,12 +267,12 @@ function ReceivingForm() {
         </div>
 
         {material && (
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="card">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">Цвет</h2>
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-500">Цвет *</span>
               <input
-                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                className="input"
                 placeholder="например T/SINIY"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
@@ -299,13 +299,13 @@ function ReceivingForm() {
         )}
 
         {material && (
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="card">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">Детали поставки</h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-500">Код цвета</span>
                 <input
-                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  className="input"
                   placeholder="например 08-77"
                   value={colorCode}
                   onChange={(e) => setColorCode(e.target.value)}
@@ -318,7 +318,7 @@ function ReceivingForm() {
                   min={0}
                   step="0.1"
                   inputMode="decimal"
-                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  className="input"
                   value={widthCm}
                   onChange={(e) => setWidthCm(e.target.value)}
                 />
@@ -330,7 +330,7 @@ function ReceivingForm() {
                   min={0}
                   step="0.1"
                   inputMode="decimal"
-                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  className="input"
                   value={weightKg}
                   onChange={(e) => setWeightKg(e.target.value)}
                 />
@@ -342,7 +342,7 @@ function ReceivingForm() {
                   min={1}
                   step="1"
                   inputMode="numeric"
-                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  className="input"
                   value={rolls}
                   onChange={(e) => setRolls(e.target.value)}
                 />
@@ -352,12 +352,12 @@ function ReceivingForm() {
         )}
 
         {material && (
-          <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+          <div className="space-y-3 card">
             <h2 className="mb-1 text-sm font-semibold text-slate-700">Поставщик</h2>
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-500">Название поставщика</span>
               <input
-                className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                className="input"
                 placeholder="например AYA Global Tex"
                 value={supplierName}
                 onChange={(e) => setSupplierName(e.target.value)}
@@ -367,7 +367,7 @@ function ReceivingForm() {
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-500">Номер авто</span>
                 <input
-                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  className="input"
                   value={truckNumber}
                   onChange={(e) => setTruckNumber(e.target.value)}
                 />
@@ -375,7 +375,7 @@ function ReceivingForm() {
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-500">Номер накладной</span>
                 <input
-                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  className="input"
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
                 />
@@ -383,7 +383,7 @@ function ReceivingForm() {
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-500">Номер партии</span>
                 <input
-                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  className="input"
                   value={batchNumber}
                   onChange={(e) => setBatchNumber(e.target.value)}
                 />
@@ -392,14 +392,14 @@ function ReceivingForm() {
           </div>
         )}
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        {success && <p className="text-sm font-medium text-green-600">{success}</p>}
+        {error && <p className="text-sm text-danger-600">{error}</p>}
+        {success && <p className="text-sm font-medium text-success-600">{success}</p>}
 
         {material && (
           <button
             type="submit"
             disabled={saving}
-            className="w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
+            className="btn-primary w-full sm:w-auto"
           >
             {saving ? 'Сохранение…' : 'Оформить приход'}
           </button>
@@ -407,7 +407,7 @@ function ReceivingForm() {
       </form>
 
       {recent.length > 0 && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <h2 className="mb-3 text-sm font-semibold text-slate-700">Недавние приходы</h2>
           <div className="space-y-2">
             {recent.map((r) => (
@@ -425,7 +425,7 @@ function ReceivingForm() {
                     {r.supplier_name ? ` · ${r.supplier_name}` : ''}
                   </p>
                 </div>
-                <span className="font-medium text-green-600">+{r.rolls} рул.</span>
+                <span className="font-medium text-success-600">+{r.rolls} рул.</span>
               </div>
             ))}
           </div>

@@ -24,7 +24,7 @@ export default function GroupTabBar() {
   const group = NAV_GROUPS.find((g) => g.key === currentItem.group);
 
   return (
-    <div className="-mx-4 mb-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+    <div className="no-scrollbar -mx-4 mb-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
       {group && <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">{group.label}</p>}
       <div className="flex gap-2 pb-1">
         {groupItems.map((item) => {
@@ -33,8 +33,10 @@ export default function GroupTabBar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium ${
-                active ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+              className={`shrink-0 rounded-full border px-4 py-2.5 text-sm font-medium sm:px-3 sm:py-1.5 sm:text-xs ${
+                active
+                  ? 'border-accent-600 bg-accent-600 text-white'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
               }`}
             >
               {item.label}

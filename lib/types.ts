@@ -372,16 +372,21 @@ export interface AnalyticsOrder {
   items?: AnalyticsOrderItem[];
 }
 
-export const ORDER_STATUSES: { value: OrderStatus; label: string; color: string }[] = [
-  { value: 'new', label: 'Новый', color: 'bg-slate-500' },
-  { value: 'confirmed', label: 'Подтверждён', color: 'bg-blue-500' },
-  { value: 'in_production', label: 'В производстве', color: 'bg-amber-500' },
-  { value: 'issued', label: 'Выдан', color: 'bg-teal-600' },
-  { value: 'shipped', label: 'Отгружен', color: 'bg-purple-500' },
-  { value: 'paid', label: 'Оплачен', color: 'bg-green-600' },
-  { value: 'cancelled', label: 'Отменён', color: 'bg-red-600' },
-  { value: 'closed_unfulfilled', label: 'Закрыт без выдачи', color: 'bg-slate-400' },
-  { value: 'returned', label: 'Возвращено', color: 'bg-orange-500' },
+// Статусы заказа. Цвет только у значимых: зелёный — выдан/оплачен,
+// красный — отменён, жёлтый — возвращено/закрыт без выдачи (требуют
+// внимания); обычный ход заказа — нейтральные оттенки графита, которые
+// различаются подписью и яркостью. color — сплошная заливка активной
+// кнопки статуса (белый текст), badge — мягкая плашка в списках.
+export const ORDER_STATUSES: { value: OrderStatus; label: string; color: string; badge: string }[] = [
+  { value: 'new', label: 'Новый', color: 'bg-slate-400', badge: 'bg-slate-100 text-slate-600' },
+  { value: 'confirmed', label: 'Подтверждён', color: 'bg-slate-500', badge: 'bg-slate-200 text-slate-700' },
+  { value: 'in_production', label: 'В производстве', color: 'bg-slate-700', badge: 'bg-slate-300 text-slate-800' },
+  { value: 'shipped', label: 'Отгружен', color: 'bg-brand', badge: 'bg-brand text-white' },
+  { value: 'issued', label: 'Выдан', color: 'bg-success-600', badge: 'bg-success-50 text-success-700' },
+  { value: 'paid', label: 'Оплачен', color: 'bg-success-600', badge: 'bg-success-50 text-success-700' },
+  { value: 'cancelled', label: 'Отменён', color: 'bg-danger-600', badge: 'bg-danger-50 text-danger-700' },
+  { value: 'closed_unfulfilled', label: 'Закрыт без выдачи', color: 'bg-warning-600', badge: 'bg-warning-50 text-warning-700' },
+  { value: 'returned', label: 'Возвращено', color: 'bg-warning-600', badge: 'bg-warning-50 text-warning-700' },
 ];
 
 export const ROLE_LABELS: Record<Role, string> = {

@@ -17,8 +17,8 @@ interface LineItem {
 
 function StockBadge({ quantity }: { quantity: number }) {
   const status = stockStatus(quantity);
-  if (status === 'out') return <span className="text-xs font-semibold text-red-600">Нет в наличии</span>;
-  if (status === 'low') return <span className="text-xs font-semibold text-amber-600">Мало ({quantity})</span>;
+  if (status === 'out') return <span className="text-xs font-semibold text-danger-600">Нет в наличии</span>;
+  if (status === 'low') return <span className="text-xs font-semibold text-warning-600">Мало ({quantity})</span>;
   return <span className="text-xs text-slate-400">Остаток {quantity}</span>;
 }
 
@@ -277,7 +277,7 @@ export default function OrderForm({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
+        <div className="space-y-4 card">
           <div>
             <label className="mb-1 block text-xs font-medium uppercase text-slate-500">Клиент *</label>
             <ClientPicker value={client} onChange={setClient} />
@@ -285,7 +285,7 @@ export default function OrderForm({
           <div>
             <label className="mb-1 block text-xs font-medium uppercase text-slate-500">Комментарий</label>
             <input
-              className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+              className="input"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               placeholder="Необязательно"
@@ -293,10 +293,10 @@ export default function OrderForm({
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <h2 className="mb-3 text-sm font-semibold text-slate-700">Добавить товар</h2>
           <input
-            className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+            className="input"
             placeholder="Название товара"
             value={productQuery}
             onChange={(e) => {
@@ -346,7 +346,7 @@ export default function OrderForm({
                 setAddingNew(true);
                 setNewVariant(emptyNewVariantForm(productQuery.trim()));
               }}
-              className="mt-3 w-full rounded-md border border-dashed border-indigo-300 px-3 py-2.5 text-sm font-medium text-indigo-600 active:bg-indigo-50"
+              className="btn-dashed-accent mt-3 w-full"
             >
               + Добавить новый товар «{productQuery.trim()}»
             </button>
@@ -358,7 +358,7 @@ export default function OrderForm({
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-500">Название товара *</span>
                 <input
-                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  className="input"
                   value={newVariant.product_name}
                   onChange={(e) => setNewVariant({ ...newVariant, product_name: e.target.value })}
                 />
@@ -366,7 +366,7 @@ export default function OrderForm({
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-500">Код (артикул)</span>
                 <input
-                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  className="input"
                   value={newVariant.sku}
                   onChange={(e) => setNewVariant({ ...newVariant, sku: e.target.value })}
                 />
@@ -375,7 +375,7 @@ export default function OrderForm({
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-500">Цвет</span>
                   <input
-                    className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                    className="input"
                     value={newVariant.color}
                     onChange={(e) => setNewVariant({ ...newVariant, color: e.target.value })}
                   />
@@ -383,7 +383,7 @@ export default function OrderForm({
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-500">Размер</span>
                   <input
-                    className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                    className="input"
                     value={newVariant.size}
                     onChange={(e) => setNewVariant({ ...newVariant, size: e.target.value })}
                   />
@@ -392,13 +392,13 @@ export default function OrderForm({
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-500">Печать</span>
                 <input
-                  className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base"
+                  className="input"
                   placeholder="без печати"
                   value={newVariant.print_type}
                   onChange={(e) => setNewVariant({ ...newVariant, print_type: e.target.value })}
                 />
               </label>
-              <p className="text-xs text-amber-600">
+              <p className="text-xs text-warning-600">
                 Новый товар создастся с нулевым остатком — приход оформляется отдельно.
               </p>
               <div className="flex gap-2">
@@ -406,14 +406,14 @@ export default function OrderForm({
                   type="button"
                   onClick={handleCreateVariant}
                   disabled={creatingVariant || !newVariant.product_name.trim()}
-                  className="flex-1 rounded-md bg-indigo-600 px-3 py-2.5 text-sm font-medium text-white active:bg-indigo-700 disabled:opacity-50"
+                  className="btn-primary flex-1"
                 >
                   {creatingVariant ? 'Создание…' : 'Создать и добавить'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setAddingNew(false)}
-                  className="rounded-md border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-500"
+                  className="btn-secondary"
                 >
                   Отмена
                 </button>
@@ -422,7 +422,7 @@ export default function OrderForm({
           )}
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <h2 className="mb-3 text-sm font-semibold text-slate-700">Товары в заказе</h2>
 
           {items.length === 0 && <p className="text-sm text-slate-400">Пока ничего не добавлено</p>}
@@ -436,7 +436,7 @@ export default function OrderForm({
                 <div
                   key={it.key}
                   className={`space-y-2 rounded-md border p-3 ${
-                    overStock ? 'border-red-400 bg-red-50' : 'border-slate-100'
+                    overStock ? 'border-danger-400 bg-danger-50' : 'border-slate-100'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -450,7 +450,7 @@ export default function OrderForm({
                     <button
                       type="button"
                       onClick={() => removeItem(it.key)}
-                      className="rounded-md px-2 py-1 text-sm font-medium text-red-600 active:bg-red-50"
+                      className="btn-ghost-danger"
                     >
                       Убрать
                     </button>
@@ -464,7 +464,7 @@ export default function OrderForm({
                       step="1"
                       inputMode="numeric"
                       className={`w-full rounded-md border px-3 py-2.5 text-base ${
-                        overStock ? 'border-red-400 text-red-600' : 'border-slate-300'
+                        overStock ? 'border-danger-400 text-danger-600' : 'border-slate-300'
                       }`}
                       value={it.quantity}
                       onChange={(e) => updateQuantity(it.key, Number(e.target.value))}
@@ -472,7 +472,7 @@ export default function OrderForm({
                   </label>
 
                   {overStock && (
-                    <p className="text-sm font-semibold text-red-600">
+                    <p className="text-sm font-semibold text-danger-600">
                       Заказ не может быть выполнен полностью — доступно только {it.variant.stock_quantity}.
                     </p>
                   )}
@@ -485,7 +485,7 @@ export default function OrderForm({
                       {price != null ? (
                         <span className="font-semibold text-slate-800">{formatMoney(it.quantity * price)}</span>
                       ) : (
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                        <span className="rounded-full bg-warning-100 px-2 py-0.5 text-xs font-medium text-warning-700">
                           без цены
                         </span>
                       )}
@@ -499,7 +499,7 @@ export default function OrderForm({
           {isCeo && items.length > 0 && (
             <div className="mt-4 border-t border-slate-100 pt-4">
               {hasUnpricedItem && (
-                <p className="mb-2 text-xs text-amber-600">
+                <p className="mb-2 text-xs text-warning-600">
                   У части позиций нет цены — задайте её в «Финансы → Цены», сумма ниже без них.
                 </p>
               )}
@@ -512,14 +512,14 @@ export default function OrderForm({
         </div>
 
         {showPickupToggle && (
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="card">
             <p className="mb-2 text-sm font-semibold text-slate-700">Когда клиент забирает товар</p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <button
                 type="button"
                 onClick={() => setImmediatePickup(true)}
                 className={`flex-1 rounded-md px-3 py-2.5 text-sm font-medium ${
-                  immediatePickup ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                  immediatePickup ? 'bg-accent-600 text-white' : 'bg-slate-100 text-slate-600'
                 }`}
               >
                 Забирает сейчас
@@ -528,7 +528,7 @@ export default function OrderForm({
                 type="button"
                 onClick={() => setImmediatePickup(false)}
                 className={`flex-1 rounded-md px-3 py-2.5 text-sm font-medium ${
-                  !immediatePickup ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                  !immediatePickup ? 'bg-accent-600 text-white' : 'bg-slate-100 text-slate-600'
                 }`}
               >
                 Оставить на потом
@@ -542,12 +542,12 @@ export default function OrderForm({
           </div>
         )}
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-danger-600">{error}</p>}
 
         <button
           type="submit"
           disabled={saving}
-          className="w-full rounded-md bg-indigo-600 px-5 py-3.5 text-base font-medium text-white hover:bg-indigo-500 disabled:opacity-50 sm:w-auto sm:py-2.5 sm:text-sm"
+          className="btn-primary w-full sm:w-auto"
         >
           {saving ? savingLabel : showPickupToggle ? (immediatePickup ? 'Оформить выдачу' : submitLabel) : submitLabel}
         </button>

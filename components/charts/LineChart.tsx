@@ -44,7 +44,7 @@ export default function LineChart({
             stroke="currentColor"
             strokeWidth="2"
             vectorEffect="non-scaling-stroke"
-            className="text-indigo-500"
+            className="text-accent-600"
           />
           {coords.map((c, i) => (
             <circle
@@ -53,7 +53,7 @@ export default function LineChart({
               cy={c.y}
               r={activeIndex === i ? 2.5 : 1.6}
               vectorEffect="non-scaling-stroke"
-              className={activeIndex === i ? 'fill-indigo-600' : 'fill-indigo-300'}
+              className={activeIndex === i ? 'fill-accent-800' : 'fill-accent-600'}
             />
           ))}
         </svg>

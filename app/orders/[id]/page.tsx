@@ -141,14 +141,14 @@ export default function OrderDetailPage() {
   }
 
   if (loading) return <p className="text-sm text-slate-400">Загрузка…</p>;
-  if (!order) return <p className="text-sm text-red-600">{error ?? 'Заказ не найден'}</p>;
+  if (!order) return <p className="text-sm text-danger-600">{error ?? 'Заказ не найден'}</p>;
 
   const showTotal = order.total !== null;
 
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/orders" className="text-xs font-medium text-indigo-600 hover:underline">
+        <Link href="/orders" className="text-xs font-medium text-accent-600 hover:underline">
           ← Все заказы
         </Link>
         <div className="mt-1 flex items-center justify-between gap-2">
@@ -164,29 +164,29 @@ export default function OrderDetailPage() {
         )}
         {order.closed_at && <p className="text-sm text-slate-500">Закрыт {formatDate(order.closed_at)}</p>}
         {order.returned_at && (
-          <p className="text-sm font-medium text-orange-600">
+          <p className="text-sm font-medium text-warning-600">
             Возвращено {formatDate(order.returned_at)}
             {order.returned_by_email && <span> · вернул {order.returned_by_email}</span>}
           </p>
         )}
         {order.completion_reason && (
-          <p className="mt-1 text-sm font-medium text-amber-600">
+          <p className="mt-1 text-sm font-medium text-warning-600">
             Причина: {COMPLETION_REASON_LABELS[order.completion_reason]}
           </p>
         )}
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <h2 className="mb-2 text-sm font-semibold text-slate-700">Клиент</h2>
           <p className="text-sm text-slate-800">{order.client_name}</p>
           {order.client_address && <p className="text-sm text-slate-500">{order.client_address}</p>}
           {order.client_phone && <p className="text-sm text-slate-500">{order.client_phone}</p>}
           {order.client_email && <p className="text-sm text-slate-500">{order.client_email}</p>}
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="card">
           <h2 className="mb-2 text-sm font-semibold text-slate-700">Статус заказа</h2>
           <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             {STATUS_BUTTONS.map((s) => (
@@ -202,7 +202,7 @@ export default function OrderDetailPage() {
             ))}
           </div>
           {hasShortage && order.status === 'new' && (
-            <p className="mt-3 text-sm font-semibold text-red-600">
+            <p className="mt-3 text-sm font-semibold text-danger-600">
               По части позиций не хватает остатка — при переходе в «Выдан» нужно будет указать причину.
             </p>
           )}
@@ -211,7 +211,7 @@ export default function OrderDetailPage() {
             <button
               onClick={handleReturnOrder}
               disabled={returning}
-              className="mt-3 w-full rounded-md border border-orange-300 px-3 py-2.5 text-sm font-medium text-orange-600 active:bg-orange-50 disabled:opacity-50 sm:w-auto"
+              className="mt-3 w-full rounded-md border border-warning-300 px-3 py-2.5 text-sm font-medium text-warning-600 active:bg-warning-50 disabled:opacity-50 sm:w-auto"
             >
               {returning ? 'Возврат…' : 'Вернуть на склад'}
             </button>
@@ -231,7 +231,7 @@ export default function OrderDetailPage() {
             <div
               key={item.id}
               className={`rounded-lg border p-3 ${
-                short ? 'border-red-300 bg-red-50' : unpriced ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'
+                short ? 'border-danger-300 bg-danger-50' : unpriced ? 'border-warning-300 bg-warning-50' : 'border-slate-200 bg-white'
               }`}
             >
               <div className="flex items-center justify-between gap-2">
@@ -251,28 +251,28 @@ export default function OrderDetailPage() {
               </div>
               {unpriced && (
                 <div className="mt-2 flex items-center gap-2">
-                  <span className="shrink-0 text-xs font-semibold text-amber-700">без цены —</span>
+                  <span className="shrink-0 text-xs font-semibold text-warning-700">без цены —</span>
                   <input
                     type="number"
                     min={0}
                     step="0.01"
                     inputMode="decimal"
                     placeholder="цена за шт"
-                    className="w-24 min-w-0 flex-1 rounded-md border border-amber-300 px-2 py-1.5 text-sm"
+                    className="w-24 min-w-0 flex-1 rounded-md border border-warning-300 px-2 py-1.5 text-sm"
                     value={draft ?? ''}
                     onChange={(e) => setPriceDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
                   />
                   <button
                     onClick={() => saveItemPrice(item)}
                     disabled={savingPriceId === item.id || !draft || draft.trim() === ''}
-                    className="shrink-0 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                    className="shrink-0 rounded-md bg-warning-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
                   >
                     Сохранить
                   </button>
                 </div>
               )}
               {short && (
-                <p className="mt-1 text-xs font-semibold text-red-600">
+                <p className="mt-1 text-xs font-semibold text-danger-600">
                   Не хватает на складе — доступно только {item.stock_quantity}
                 </p>
               )}
@@ -286,7 +286,7 @@ export default function OrderDetailPage() {
               <p className="text-sm font-semibold text-slate-900">{formatMoney(order.total ?? 0)}</p>
             </div>
             {order.has_unpriced_item && (
-              <p className="mt-1 text-xs font-medium text-amber-700">
+              <p className="mt-1 text-xs font-medium text-warning-700">
                 Есть позиции без цены — в итог они пока не входят, впишите цену выше.
               </p>
             )}
@@ -301,8 +301,8 @@ export default function OrderDetailPage() {
             <tr>
               <th className="px-4 py-3">Товар</th>
               <th className="px-4 py-3">Кол-во</th>
-              {showTotal && <th className="px-4 py-3">Цена</th>}
-              {showTotal && <th className="px-4 py-3">Сумма</th>}
+              {showTotal && <th className="num px-4 py-3">Цена</th>}
+              {showTotal && <th className="num px-4 py-3">Сумма</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -312,12 +312,12 @@ export default function OrderDetailPage() {
               const unpriced = showTotal && item.price === null;
               const draft = priceDrafts[item.id];
               return (
-                <tr key={item.id} className={short ? 'bg-red-50' : unpriced ? 'bg-amber-50' : undefined}>
+                <tr key={item.id} className={short ? 'bg-danger-50' : unpriced ? 'bg-warning-50' : undefined}>
                   <td className="px-4 py-3 font-medium text-slate-800">
                     {item.product_name}
                     {label && <span className="text-slate-400"> · {label}</span>}
                     {short && (
-                      <span className="ml-2 text-xs font-semibold text-red-600">
+                      <span className="ml-2 text-xs font-semibold text-danger-600">
                         не хватает (доступно {item.stock_quantity})
                       </span>
                     )}
@@ -326,25 +326,25 @@ export default function OrderDetailPage() {
                     {item.quantity} {item.product_unit}
                   </td>
                   {showTotal && (
-                    <td className="px-4 py-3 text-slate-600">
+                    <td className="num px-4 py-3 text-slate-600">
                       {item.price !== null ? (
                         formatMoney(item.price)
                       ) : (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-end gap-2">
                           <input
                             type="number"
                             min={0}
                             step="0.01"
                             inputMode="decimal"
                             placeholder="без цены"
-                            className="w-24 rounded-md border border-amber-300 px-2 py-1 text-sm"
+                            className="w-24 rounded-md border border-warning-300 px-2 py-1 text-sm"
                             value={draft ?? ''}
                             onChange={(e) => setPriceDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
                           />
                           <button
                             onClick={() => saveItemPrice(item)}
                             disabled={savingPriceId === item.id || !draft || draft.trim() === ''}
-                            className="rounded-md bg-amber-600 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+                            className="rounded-md bg-warning-600 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
                           >
                             Сохранить
                           </button>
@@ -353,7 +353,7 @@ export default function OrderDetailPage() {
                     </td>
                   )}
                   {showTotal && (
-                    <td className="px-4 py-3 text-slate-600">
+                    <td className="num px-4 py-3 text-slate-600">
                       {item.price !== null ? formatMoney(item.price * item.quantity) : '—'}
                     </td>
                   )}
@@ -367,10 +367,10 @@ export default function OrderDetailPage() {
                 <td colSpan={3} className="px-4 py-3 text-right text-sm font-semibold text-slate-700">
                   Итого
                 </td>
-                <td className="px-4 py-3 text-sm font-semibold text-slate-900">
+                <td className="num px-4 py-3 text-sm font-semibold text-slate-900">
                   {formatMoney(order.total ?? 0)}
                   {order.has_unpriced_item && (
-                    <span className="ml-2 text-xs font-medium text-amber-700">без цены не включено</span>
+                    <span className="ml-2 text-xs font-medium text-warning-700">без цены не включено</span>
                   )}
                 </td>
               </tr>
@@ -382,7 +382,7 @@ export default function OrderDetailPage() {
       {role === 'ceo' && (
         <button
           onClick={handleDelete}
-          className="rounded-md px-2 py-2 text-sm font-medium text-red-600 active:bg-red-50 sm:text-xs sm:hover:underline"
+          className="btn-ghost-danger"
         >
           Удалить заказ
         </button>
@@ -399,7 +399,7 @@ export default function OrderDetailPage() {
               <button
                 onClick={() => handleShortageResolution('partial_pickup')}
                 disabled={resolvingShortage}
-                className="w-full rounded-md bg-indigo-600 px-4 py-3 text-sm font-medium text-white active:bg-indigo-700 disabled:opacity-50"
+                className="btn-primary w-full"
               >
                 Клиент срочно забрал, что было
               </button>
@@ -413,7 +413,7 @@ export default function OrderDetailPage() {
               <button
                 onClick={() => setShowShortageDialog(false)}
                 disabled={resolvingShortage}
-                className="w-full rounded-md px-4 py-2.5 text-sm font-medium text-slate-500"
+                className="btn-ghost-muted w-full"
               >
                 Отмена
               </button>

@@ -61,7 +61,7 @@ function ProductivityControlContent() {
 
       <ShopToggle shop={shop} onChange={setShop} />
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger-600">{error}</p>}
       {loading ? (
         <p className="text-sm text-slate-400">Загрузка…</p>
       ) : (

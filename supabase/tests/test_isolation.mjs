@@ -85,6 +85,7 @@ async function main() {
     [`select * from finance_receipts_view`, 'finance_receipts_view'],
     [`select * from finance_receipt_items_view`, 'finance_receipt_items_view'],
     [`select * from finance_audit_log`, 'finance_audit_log'],
+    [`select * from finance_audit_log_view`, 'finance_audit_log_view'],
   ];
   for (const role of ['zakroyshik', 'master']) {
     await asUser(db, role);
