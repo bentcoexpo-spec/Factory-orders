@@ -52,3 +52,14 @@ export function friendlyProductRenameError(message: string): string {
   }
   return message;
 }
+
+// Сумма в одной записи хранится как numeric(12, 2) — не больше
+// 9.999.999.999 сум. Если итог (например, заказа на несколько позиций)
+// не помещается, база отклоняет операцию целиком с технической
+// «numeric field overflow»; переводим в понятную строку.
+export function friendlyMoneyError(message: string): string {
+  if (/numeric field overflow|out of range/i.test(message)) {
+    return 'Сумма слишком большая: в одной записи — не больше 9.999.999.999 сум. Разбейте на несколько записей.';
+  }
+  return message;
+}

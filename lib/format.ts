@@ -1,12 +1,9 @@
-// Узбекский сум — у него нет ISO-кода, который браузеры/Intl умеют
-// превращать в валютный символ (как "₽"/"$" для style: 'currency'),
-// и общепринятого короткого символа тоже нет — пишут словом после
-// числа. Сум на практике не делят на более мелкие единицы, поэтому
-// округляем до целых, как и раньше.
+import { formatMoneyValue } from '@/lib/money';
+
+// Суммы показываются одинаково везде: точка — разделитель тысяч,
+// «5.000.000 сум» (см. lib/money.ts). Суммы целые, как и в поле ввода.
 export function formatMoney(value: number) {
-  // Неразрывный пробел перед «сум» — иначе слово переносится на новую строку
-  // отдельно от числа. Разделитель тысяч у Intl для ru-RU тоже неразрывный.
-  return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(value)}\u00a0сум`;
+  return formatMoneyValue(value);
 }
 
 export function formatDate(value: string) {

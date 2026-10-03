@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase';
 import { CuttingBatch, Employee, OperationType, WorkRecord } from '@/lib/types';
 import { formatDate, formatMoney } from '@/lib/format';
 import RequireRole from '@/components/RequireRole';
+import MoneyInput from '@/components/MoneyInput';
+import { moneyDigits } from '@/lib/money';
 
 function todayDate() {
   return new Date().toISOString().slice(0, 10);
@@ -82,7 +84,7 @@ function PieceworkContent() {
     setRecentBatches((batches as unknown as CuttingBatch[]) ?? []);
     const drafts: Record<string, string> = {};
     (ops ?? []).forEach((o) => {
-      drafts[o.id] = String(o.rate_per_piece);
+      drafts[o.id] = moneyDigits(o.rate_per_piece);
     });
     setRateDrafts(drafts);
   }
@@ -169,14 +171,13 @@ function PieceworkContent() {
     }
     const op = data as unknown as OperationType;
     setOperationTypes((prev) => [...prev, op].sort((a, b) => a.name.localeCompare(b.name)));
-    setRateDrafts((prev) => ({ ...prev, [op.id]: String(op.rate_per_piece) }));
+    setRateDrafts((prev) => ({ ...prev, [op.id]: moneyDigits(op.rate_per_piece) }));
     setNewOperationName('');
     setNewOperationRate('');
   }
 
   async function saveRate(opId: string) {
-    const value = Number(rateDrafts[opId]);
-    if (Number.isNaN(value) || value < 0) return;
+    const value = Number(rateDrafts[opId] || 0);
     const { error } = await supabase.from('operation_types').update({ rate_per_piece: value }).eq('id', opId);
     if (error) {
       setError(error.message);
@@ -346,14 +347,10 @@ function PieceworkContent() {
             <div key={op.id} className="flex items-center justify-between gap-2">
               <span className="text-sm text-slate-800">{op.name}</span>
               <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  min={0}
-                  step="0.1"
-                  inputMode="decimal"
-                  className="w-24 rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                <MoneyInput
+                  className="input w-28 px-2 py-1.5"
                   value={rateDrafts[op.id] ?? ''}
-                  onChange={(e) => setRateDrafts((prev) => ({ ...prev, [op.id]: e.target.value }))}
+                  onChange={(digits) => setRateDrafts((prev) => ({ ...prev, [op.id]: digits }))}
                   onBlur={() => saveRate(op.id)}
                 />
                 <span className="text-xs text-slate-400">сум/шт</span>
@@ -369,15 +366,11 @@ function PieceworkContent() {
             value={newOperationName}
             onChange={(e) => setNewOperationName(e.target.value)}
           />
-          <input
-            type="number"
-            min={0}
-            step="0.1"
-            inputMode="decimal"
-            className="w-24 shrink-0 rounded-md border border-slate-300 px-3 py-2.5 text-base"
+          <MoneyInput
+            className="input w-28 shrink-0"
             placeholder="сум/шт"
             value={newOperationRate}
-            onChange={(e) => setNewOperationRate(e.target.value)}
+            onChange={setNewOperationRate}
           />
           <button
             type="button"

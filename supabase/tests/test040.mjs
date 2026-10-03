@@ -32,7 +32,7 @@ async function main() {
   const find = (t, a) => rows.filter((r) => r.entity_type === t && r.action === a);
 
   check('у каждой записи есть автор-email', rows.length > 0 && rows.every((r) => r.actor_email === 'ceo@test.test'), rows.length);
-  const priceChange = find('product', 'price_change');
+  const priceChange = find('product', 'price_change').sort((a, b) => Number(a.detail.new_price) - Number(b.detail.new_price));
   check('правки обычной цены: 2 записи, имя товара в записи', priceChange.length === 2 && priceChange.every((r) => r.product_name === 'Журнал-товар'), priceChange.length);
   check('у правки цены видны old и new', Number(priceChange[1].detail.old_price) === 5000 && Number(priceChange[1].detail.new_price) === 5500);
   const special = find('client_product_price', 'client_price_set')[0];

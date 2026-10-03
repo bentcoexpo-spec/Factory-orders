@@ -20,6 +20,8 @@ import ExcelButton from '@/components/ExcelButton';
 import ExpenseCard, { KindToggle, MarketToggle } from '@/components/ExpenseCard';
 import { PhotoPicker } from '@/components/ReceiptPhotos';
 import { useFinanceFilters } from '@/components/FinanceFilters';
+import MoneyInput from '@/components/MoneyInput';
+import { friendlyMoneyError } from '@/lib/errors';
 
 function ExpenseForm({ suppliers, onSaved }: { suppliers: string[]; onSaved: () => void }) {
   const [title, setTitle] = useState('');
@@ -68,7 +70,7 @@ function ExpenseForm({ suppliers, onSaved }: { suppliers: string[]; onSaved: () 
       .single();
     if (insertError || !data) {
       setSaving(false);
-      setError(insertError?.message ?? 'Не удалось сохранить расход');
+      setError(friendlyMoneyError(insertError?.message ?? 'Не удалось сохранить расход'));
       return;
     }
     if (files.length > 0) {
@@ -105,15 +107,7 @@ function ExpenseForm({ suppliers, onSaved }: { suppliers: string[]; onSaved: () 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-500">Сумма, сум *</span>
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            inputMode="decimal"
-            className="input"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-          />
+          <MoneyInput className="input" value={amount} onChange={setAmount} />
         </label>
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-500">Дата *</span>

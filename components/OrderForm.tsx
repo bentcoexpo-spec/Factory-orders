@@ -8,6 +8,7 @@ import { formatMoney } from '@/lib/format';
 import { useRole } from '@/components/RoleProvider';
 import ClientPicker from '@/components/ClientPicker';
 import VariantPicker, { VariantPick } from '@/components/VariantPicker';
+import { friendlyMoneyError } from '@/lib/errors';
 
 interface LineItem {
   key: string;
@@ -245,7 +246,7 @@ export default function OrderForm({
 
     if (orderError || !orderId) {
       setSaving(false);
-      setError(orderError?.message ?? 'Не удалось создать заказ');
+      setError(friendlyMoneyError(orderError?.message ?? 'Не удалось создать заказ'));
       return;
     }
 

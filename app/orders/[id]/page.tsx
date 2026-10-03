@@ -14,9 +14,11 @@ import {
   variantLabel,
 } from '@/lib/types';
 import { formatDate, formatMoney } from '@/lib/format';
-import { friendlyOrderReturnError } from '@/lib/errors';
+import { friendlyMoneyError, friendlyOrderReturnError } from '@/lib/errors';
 import StatusBadge from '@/components/StatusBadge';
 import { useRole } from '@/components/RoleProvider';
+import MoneyInput from '@/components/MoneyInput';
+import { confirmSmallPrice, digitsToNumber, moneyDigits } from '@/lib/money';
 
 // "closed_unfulfilled" ставится только через complete_order_with_shortage
 // (не прямой сменой статуса), "returned" — только через кнопку «Вернуть на
@@ -36,6 +38,7 @@ export default function OrderDetailPage() {
   const [returning, setReturning] = useState(false);
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
   const [savingPriceId, setSavingPriceId] = useState<string | null>(null);
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
 
   async function loadOrder() {
     setLoading(true);
@@ -108,12 +111,34 @@ export default function OrderDetailPage() {
     else loadOrder();
   }
 
+  function startEditPrice(item: OrderItemView) {
+    setError(null);
+    setPriceDrafts((prev) => ({ ...prev, [item.id]: moneyDigits(item.price) }));
+    setEditingPriceId(item.id);
+  }
+
+  function cancelEditPrice(item: OrderItemView) {
+    setEditingPriceId(null);
+    setPriceDrafts((prev) => {
+      const next = { ...prev };
+      delete next[item.id];
+      return next;
+    });
+  }
+
   async function saveItemPrice(item: OrderItemView) {
-    const draft = priceDrafts[item.id];
-    if (draft === undefined || draft.trim() === '') return;
-    const value = Number(draft);
-    if (Number.isNaN(value) || value < 0) {
-      setError('Цена должна быть неотрицательным числом');
+    const value = digitsToNumber(priceDrafts[item.id] ?? '');
+    if (value === null) return;
+    const what = `${item.product_name}${variantLabel(item) ? ` · ${variantLabel(item)}` : ''}`;
+    if (!confirmSmallPrice(value, what)) return;
+    // Правка уже стоявшей цены меняет сумму чека и долг клиента — только с
+    // подтверждением; запись «кто и когда» база пишет в журнал сама.
+    if (
+      item.price !== null &&
+      !confirm(
+        `Изменить цену в чеке?\n${what}\nБыло: ${formatMoney(item.price)}, станет: ${formatMoney(value)}\nСумма чека и долг клиента изменятся. Изменение запишется в журнал.`
+      )
+    ) {
       return;
     }
     setSavingPriceId(item.id);
@@ -121,14 +146,10 @@ export default function OrderDetailPage() {
     const { error } = await supabase.from('order_items').update({ price: value }).eq('id', item.id);
     setSavingPriceId(null);
     if (error) {
-      setError(error.message);
+      setError(friendlyMoneyError(error.message));
       return;
     }
-    setPriceDrafts((prev) => {
-      const next = { ...prev };
-      delete next[item.id];
-      return next;
-    });
+    cancelEditPrice(item);
     loadOrder();
   }
 
@@ -227,6 +248,7 @@ export default function OrderDetailPage() {
           const short = item.quantity > item.stock_quantity;
           const unpriced = showTotal && item.price === null;
           const draft = priceDrafts[item.id];
+          const editing = editingPriceId === item.id;
           return (
             <div
               key={item.id}
@@ -249,27 +271,33 @@ export default function OrderDetailPage() {
                   <p className="shrink-0 text-sm font-medium text-slate-700">{formatMoney(item.price * item.quantity)}</p>
                 )}
               </div>
-              {unpriced && (
+              {(unpriced || editing) && (
                 <div className="mt-2 flex items-center gap-2">
-                  <span className="shrink-0 text-xs font-semibold text-warning-700">без цены —</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    inputMode="decimal"
+                  {unpriced && <span className="shrink-0 text-xs font-semibold text-warning-700">без цены —</span>}
+                  <MoneyInput
                     placeholder="цена за шт"
-                    className="w-24 min-w-0 flex-1 rounded-md border border-warning-300 px-2 py-1.5 text-sm"
+                    className="input min-w-0 flex-1"
                     value={draft ?? ''}
-                    onChange={(e) => setPriceDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                    onChange={(digits) => setPriceDrafts((prev) => ({ ...prev, [item.id]: digits }))}
                   />
                   <button
                     onClick={() => saveItemPrice(item)}
-                    disabled={savingPriceId === item.id || !draft || draft.trim() === ''}
-                    className="shrink-0 rounded-md bg-warning-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                    disabled={savingPriceId === item.id || !draft}
+                    className="btn-primary btn-sm shrink-0"
                   >
                     Сохранить
                   </button>
+                  {editing && (
+                    <button onClick={() => cancelEditPrice(item)} className="btn-ghost-muted shrink-0">
+                      Отмена
+                    </button>
+                  )}
                 </div>
+              )}
+              {showTotal && item.price !== null && !editing && (
+                <button onClick={() => startEditPrice(item)} className="btn-ghost -ml-3 mt-1">
+                  Изменить цену
+                </button>
               )}
               {short && (
                 <p className="mt-1 text-xs font-semibold text-danger-600">
@@ -311,6 +339,7 @@ export default function OrderDetailPage() {
               const short = item.quantity > item.stock_quantity;
               const unpriced = showTotal && item.price === null;
               const draft = priceDrafts[item.id];
+              const editing = editingPriceId === item.id;
               return (
                 <tr key={item.id} className={short ? 'bg-danger-50' : unpriced ? 'bg-warning-50' : undefined}>
                   <td className="px-4 py-3 font-medium text-slate-800">
@@ -327,27 +356,33 @@ export default function OrderDetailPage() {
                   </td>
                   {showTotal && (
                     <td className="num px-4 py-3 text-slate-600">
-                      {item.price !== null ? (
-                        formatMoney(item.price)
+                      {item.price !== null && !editing ? (
+                        <div className="flex items-center justify-end gap-2">
+                          {formatMoney(item.price)}
+                          <button onClick={() => startEditPrice(item)} className="btn-ghost-muted" aria-label="Изменить цену">
+                            Изменить
+                          </button>
+                        </div>
                       ) : (
                         <div className="flex items-center justify-end gap-2">
-                          <input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            inputMode="decimal"
-                            placeholder="без цены"
-                            className="w-24 rounded-md border border-warning-300 px-2 py-1 text-sm"
+                          <MoneyInput
+                            placeholder="цена за шт"
+                            className="input w-40"
                             value={draft ?? ''}
-                            onChange={(e) => setPriceDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                            onChange={(digits) => setPriceDrafts((prev) => ({ ...prev, [item.id]: digits }))}
                           />
                           <button
                             onClick={() => saveItemPrice(item)}
-                            disabled={savingPriceId === item.id || !draft || draft.trim() === ''}
-                            className="rounded-md bg-warning-600 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+                            disabled={savingPriceId === item.id || !draft}
+                            className="btn-primary btn-sm"
                           >
                             Сохранить
                           </button>
+                          {editing && (
+                            <button onClick={() => cancelEditPrice(item)} className="btn-ghost-muted">
+                              Отмена
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>

@@ -7,6 +7,9 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { formatDateOnly } from '@/lib/dates';
 import { removeAllReceiptFiles } from '@/lib/receiptPhotos';
 import { SavedPhotos } from '@/components/ReceiptPhotos';
+import MoneyInput from '@/components/MoneyInput';
+import { moneyDigits } from '@/lib/money';
+import { friendlyMoneyError } from '@/lib/errors';
 
 // Одна оплата в списке: раскрывается в фото, правку и удаление. И
 // правка, и удаление — с подтверждением; в журнал (finance_audit_log)
@@ -22,7 +25,7 @@ export default function PaymentRow({
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [amount, setAmount] = useState(String(payment.amount));
+  const [amount, setAmount] = useState(moneyDigits(payment.amount));
   const [paidAt, setPaidAt] = useState(payment.paid_at);
   const [comment, setComment] = useState(payment.comment ?? '');
   const [busy, setBusy] = useState(false);
@@ -53,7 +56,7 @@ export default function PaymentRow({
       .eq('id', payment.id);
     setBusy(false);
     if (updateError) {
-      setError(updateError.message);
+      setError(friendlyMoneyError(updateError.message));
       return;
     }
     setEditing(false);
@@ -132,15 +135,7 @@ export default function PaymentRow({
               <div className="grid gap-3 sm:grid-cols-3">
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-500">Сумма</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    inputMode="decimal"
-                    className="input"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                  />
+                  <MoneyInput className="input" value={amount} onChange={setAmount} />
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-500">Дата</span>
@@ -173,7 +168,7 @@ export default function PaymentRow({
                   type="button"
                   onClick={() => {
                     setEditing(false);
-                    setAmount(String(payment.amount));
+                    setAmount(moneyDigits(payment.amount));
                     setPaidAt(payment.paid_at);
                     setComment(payment.comment ?? '');
                     setError(null);

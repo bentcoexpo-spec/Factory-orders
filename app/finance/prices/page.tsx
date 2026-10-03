@@ -7,6 +7,9 @@ import { formatDate, formatMoney } from '@/lib/format';
 import RequireRole from '@/components/RequireRole';
 import ClientPicker from '@/components/ClientPicker';
 import { useFinanceFilters } from '@/components/FinanceFilters';
+import MoneyInput from '@/components/MoneyInput';
+import { confirmSmallPrice, digitsToNumber, moneyDigits } from '@/lib/money';
+import { friendlyMoneyError } from '@/lib/errors';
 
 function ProductPicker({
   value,
@@ -118,15 +121,12 @@ function StandardPrices() {
   async function save(product: Product) {
     const draft = drafts[product.id];
     if (draft === undefined) return;
-    const value = draft.trim() === '' ? null : Number(draft);
-    if (value !== null && (Number.isNaN(value) || value < 0)) {
-      setError('Цена должна быть неотрицательным числом');
-      return;
-    }
+    const value = digitsToNumber(draft);
+    if (value !== null && !confirmSmallPrice(value, product.name)) return;
     setError(null);
     const { error } = await supabase.from('products').update({ price: value }).eq('id', product.id);
     if (error) {
-      setError(error.message);
+      setError(friendlyMoneyError(error.message));
       return;
     }
     setDrafts((prev) => {
@@ -156,7 +156,7 @@ function StandardPrices() {
         <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white">
           {visible.map((p) => {
             const draft = drafts[p.id];
-            const dirty = draft !== undefined && draft !== String(p.price ?? '');
+            const dirty = draft !== undefined && draft !== moneyDigits(p.price);
             return (
               <div key={p.id} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">
@@ -166,15 +166,11 @@ function StandardPrices() {
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    inputMode="decimal"
+                  <MoneyInput
                     placeholder="без цены"
-                    className="w-28 rounded-md border border-slate-300 px-3 py-2 text-base sm:py-1.5 sm:text-sm"
-                    value={draft ?? p.price ?? ''}
-                    onChange={(e) => setDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                    className="input w-36 sm:w-40"
+                    value={draft ?? moneyDigits(p.price)}
+                    onChange={(digits) => setDrafts((prev) => ({ ...prev, [p.id]: digits }))}
                   />
                   {dirty && (
                     <button
@@ -231,11 +227,12 @@ function SpecialPrices() {
       setError('Выберите клиента и товар');
       return;
     }
-    const value = Number(price);
-    if (!price.trim() || Number.isNaN(value) || value < 0) {
-      setError('Укажите цену — неотрицательное число');
+    const value = digitsToNumber(price);
+    if (value === null) {
+      setError('Укажите цену');
       return;
     }
+    if (!confirmSmallPrice(value, `${client.name} · ${product.name}`)) return;
     setSaving(true);
     setError(null);
     // Явно insert/update вместо upsert — проще и понятнее, чем полагаться
@@ -247,7 +244,7 @@ function SpecialPrices() {
       : await supabase.from('client_product_prices').insert({ client_id: client.id, product_id: product.id, price: value });
     setSaving(false);
     if (error) {
-      setError(error.message);
+      setError(friendlyMoneyError(error.message));
       return;
     }
     setClient(null);
@@ -280,15 +277,7 @@ function SpecialPrices() {
           </div>
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-slate-500">Цена</span>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              inputMode="decimal"
-              className="input"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-            />
+            <MoneyInput className="input" value={price} onChange={setPrice} />
           </label>
         </div>
         {error && <p className="text-sm text-danger-600">{error}</p>}

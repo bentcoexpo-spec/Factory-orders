@@ -29,6 +29,7 @@ export const AUDIT_GROUP_LABELS: Record<AuditGroup, string> = {
 const GROUP_BY_ENTITY: Record<string, AuditGroup> = {
   product: 'prices',
   client_product_price: 'prices',
+  order_items: 'prices',
   client_payments: 'payments',
   expenses: 'expenses',
   expense_repayments: 'repayments',
@@ -137,6 +138,16 @@ export function describeEntry(e: AuditEntry): AuditDescription {
       };
     case 'client_product_price:client_price_delete':
       return { text: `убрал особую цену клиента ${client} на ${product} (было ${money(d?.price)})`, tone: 'danger', changes: [] };
+
+    case 'order_items:update': {
+      const oldRow = (d?.old ?? {}) as Record<string, unknown>;
+      const newRow = (d?.new ?? {}) as Record<string, unknown>;
+      return {
+        text: `изменил цену в чеке клиента ${client} (${product}): ${money(oldRow.price)} → ${money(newRow.price)}`,
+        tone: 'neutral',
+        changes: [],
+      };
+    }
 
     case 'client_payments:insert':
       return { text: `внёс оплату от ${client}: ${money(d?.amount)}`, tone: 'success', changes: snapshot(d) };

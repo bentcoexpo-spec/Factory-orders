@@ -14,6 +14,9 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { formatDateOnly, todayDate } from '@/lib/dates';
 import { removeAllReceiptFiles } from '@/lib/receiptPhotos';
 import { SavedPhotos } from '@/components/ReceiptPhotos';
+import MoneyInput from '@/components/MoneyInput';
+import { moneyDigits } from '@/lib/money';
+import { friendlyMoneyError } from '@/lib/errors';
 
 const MARKETS: ExpenseMarket[] = ['general', 'local', 'expo'];
 const KINDS: ExpensePaymentKind[] = ['paid', 'credit'];
@@ -67,7 +70,7 @@ export default function ExpenseCard({ expense, onChanged }: { expense: Expense; 
   const [error, setError] = useState<string | null>(null);
 
   const [title, setTitle] = useState(expense.title);
-  const [amount, setAmount] = useState(String(expense.amount));
+  const [amount, setAmount] = useState(moneyDigits(expense.amount));
   const [spentAt, setSpentAt] = useState(expense.spent_at);
   const [kind, setKind] = useState<ExpensePaymentKind>(expense.payment_kind);
   const [supplier, setSupplier] = useState(expense.supplier ?? '');
@@ -130,7 +133,7 @@ export default function ExpenseCard({ expense, onChanged }: { expense: Expense; 
       .eq('id', expense.id);
     setBusy(false);
     if (updateError) {
-      setError(updateError.message);
+      setError(friendlyMoneyError(updateError.message));
       return;
     }
     setEditing(false);
@@ -182,7 +185,7 @@ export default function ExpenseCard({ expense, onChanged }: { expense: Expense; 
     });
     setBusy(false);
     if (insertError) {
-      setError(insertError.message);
+      setError(friendlyMoneyError(insertError.message));
       return;
     }
     setRepayAmount('');
@@ -268,19 +271,10 @@ export default function ExpenseCard({ expense, onChanged }: { expense: Expense; 
                     <div className="space-y-2 border-t border-slate-100 pt-2">
                       <p className="text-xs font-medium text-slate-500">Погасить (полностью или частью)</p>
                       <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          inputMode="decimal"
-                          placeholder="Сумма"
-                          className="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2.5 text-base"
-                          value={repayAmount}
-                          onChange={(e) => setRepayAmount(e.target.value)}
-                        />
+                        <MoneyInput placeholder="Сумма" className="input min-w-0 flex-1" value={repayAmount} onChange={setRepayAmount} />
                         <button
                           type="button"
-                          onClick={() => setRepayAmount(String(expense.debt_left))}
+                          onClick={() => setRepayAmount(moneyDigits(expense.debt_left))}
                           className="btn-secondary btn-sm shrink-0"
                         >
                           Весь остаток
@@ -346,15 +340,7 @@ export default function ExpenseCard({ expense, onChanged }: { expense: Expense; 
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-500">Сумма, сум</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    inputMode="decimal"
-                    className="input"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                  />
+                  <MoneyInput className="input" value={amount} onChange={setAmount} />
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-500">Дата</span>

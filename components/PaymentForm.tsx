@@ -7,6 +7,8 @@ import { todayDate } from '@/lib/dates';
 import { uploadReceiptPhotos } from '@/lib/receiptPhotos';
 import ClientPicker from '@/components/ClientPicker';
 import { PhotoPicker } from '@/components/ReceiptPhotos';
+import MoneyInput from '@/components/MoneyInput';
+import { friendlyMoneyError } from '@/lib/errors';
 
 // Форма «Внести оплату» — одна и для вкладки «Оплаты» (клиента выбирают),
 // и для карточки клиента в «Долгах» (клиент уже известен).
@@ -53,7 +55,7 @@ export default function PaymentForm({
       .single();
     if (insertError || !data) {
       setSaving(false);
-      setError(insertError?.message ?? 'Не удалось сохранить оплату');
+      setError(friendlyMoneyError(insertError?.message ?? 'Не удалось сохранить оплату'));
       return;
     }
 
@@ -87,15 +89,7 @@ export default function PaymentForm({
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-500">Сумма, сум *</span>
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            inputMode="decimal"
-            className="input"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-          />
+          <MoneyInput className="input" value={amount} onChange={setAmount} />
         </label>
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-500">Дата оплаты *</span>
