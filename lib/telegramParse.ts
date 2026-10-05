@@ -1,4 +1,4 @@
-import { ProductVariant, sizeRank, sortSizes } from '@/lib/types';
+import { ProductVariant, canonicalSize, sizeRank, sortSizes } from '@/lib/types';
 
 // Чистые функции разбора текста для Telegram-бота (без обращений к базе),
 // чтобы их можно было проверять отдельно от самого бота.
@@ -47,6 +47,12 @@ export function norm(value: string | null | undefined): string {
     .replace(/[-–—]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+// Размер для сравнения: XXL и 2XL — один и тот же размер (см. canonicalSize;
+// основное написание — XXL/XXXL, а с четырёх цифрой: 4XL).
+export function sizeKeyOf(value: string | null | undefined): string {
+  return norm(canonicalSize(value ?? null));
 }
 
 // Расстояние Дамерау–Левенштейна (вставка, удаление, замена, перестановка
@@ -120,12 +126,14 @@ export function canonicalValue(input: string, existing: (string | null)[], kind:
   } else {
     const lookalike = sizeLookalike(norm(value));
     if (lookalike) value = lookalike;
+    value = canonicalSize(value) ?? value;
   }
 
-  const key = norm(value);
+  // Для размера «тот же» значит «тот же по canonicalSize»: XXL и 2XL — один размер.
+  const same = (e: string) => (kind === 'size' ? sizeKeyOf(e) === sizeKeyOf(value) : norm(e) === norm(value));
   const counts = new Map<string, number>();
   for (const e of existing) {
-    if (e && norm(e) === key) counts.set(e, (counts.get(e) ?? 0) + 1);
+    if (e && same(e)) counts.set(e, (counts.get(e) ?? 0) + 1);
   }
   if (counts.size > 0) {
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ru'))[0][0];
@@ -449,7 +457,10 @@ export function parseOrderLine(line: string, variants: ProductVariant[]): ParseR
   const unmatched: string[] = [];
   for (const token of rest) {
     if (!wantedSize) {
-      const asSize = sizes.find((s) => norm(s) === token) ?? sizes.find((s) => norm(s) === sizeLookalike(token));
+      const asSize =
+        sizes.find((s) => norm(s) === token) ??
+        sizes.find((s) => norm(s) === sizeLookalike(token)) ??
+        sizes.find((s) => sizeKeyOf(s) === sizeKeyOf(token) || sizeKeyOf(s) === sizeKeyOf(sizeLookalike(token)));
       if (asSize) {
         wantedSize = asSize;
         continue;
@@ -485,7 +496,7 @@ export function parseOrderLine(line: string, variants: ProductVariant[]): ParseR
 
   let matched = pool;
   if (wantedColors) matched = matched.filter((v) => wantedColors!.has(norm(v.color)));
-  if (wantedSize) matched = matched.filter((v) => norm(v.size) === norm(wantedSize));
+  if (wantedSize) matched = matched.filter((v) => sizeKeyOf(v.size) === sizeKeyOf(wantedSize));
   if (matched.length === 0) {
     events.push({ reason: 'no_variant', token: shown, detail: { product: productLabel } });
     return { kind: 'error', code: 'no_variant', params: { line: shown, ...inventory }, events };

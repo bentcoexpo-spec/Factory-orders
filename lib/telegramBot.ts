@@ -21,6 +21,7 @@ import {
   phoneDigits,
   phoneKey,
   sameProductName,
+  sizeKeyOf,
 } from '@/lib/telegramParse';
 import { both, Lang, MessageKey, Params, raw, t } from '@/lib/telegramI18n';
 
@@ -581,7 +582,7 @@ async function showSkladColor(ctx: Ctx, messageId: number | undefined, productId
   // размер одного цвета, поэтому остатки одинаковых размеров суммируем.
   const bySize = new Map<string, { size: string | null; print: string | null; stock: number }>();
   for (const v of group.variants) {
-    const key = `${norm(v.size)}|${v.print_type}`;
+    const key = `${sizeKeyOf(v.size)}|${v.print_type}`;
     const entry = bySize.get(key) ?? { size: v.size, print: v.print_type, stock: 0 };
     entry.stock += Number(v.stock_quantity);
     bySize.set(key, entry);
@@ -955,7 +956,7 @@ async function stepPick(ctx: Ctx, pending: PickVariantPending, queue: string[], 
 
   await save({ product: productId, color: group.key });
   const sorted = [...variants].sort((a, b) => sizeRank(a.size) - sizeRank(b.size) || String(a.size ?? '').localeCompare(String(b.size ?? ''), 'ru'));
-  const sizeKey = (v: ProductVariant) => `${norm(v.size)}|${v.print_type}`;
+  const sizeKey = (v: ProductVariant) => `${sizeKeyOf(v.size)}|${v.print_type}`;
   const sameSize = new Map<string, number>();
   for (const v of sorted) sameSize.set(sizeKey(v), (sameSize.get(sizeKey(v)) ?? 0) + 1);
   const cells: InlineButton[] = sorted.map((v) => {
@@ -1401,8 +1402,8 @@ async function askConfirm(ctx: Ctx, draft: Draft, quantity: number) {
     flags += tr(ctx, 'ap.flagNewProduct');
   } else {
     if (color && !variants.some((v) => norm(v.color) === norm(color))) flags += tr(ctx, 'ap.flagNewColor');
-    if (size && !variants.some((v) => norm(v.size) === norm(size))) flags += tr(ctx, 'ap.flagNewSize');
-    const existing = variants.find((v) => norm(v.color) === norm(color) && norm(v.size) === norm(size) && v.print_type === NO_PRINT);
+    if (size && !variants.some((v) => sizeKeyOf(v.size) === sizeKeyOf(size))) flags += tr(ctx, 'ap.flagNewSize');
+    const existing = variants.find((v) => norm(v.color) === norm(color) && sizeKeyOf(v.size) === sizeKeyOf(size) && v.print_type === NO_PRINT);
     if (existing) {
       const before = Number(existing.stock_quantity);
       stock = tr(ctx, 'ap.stockChange', { before: fmt(before), after: fmt(before + quantity) });
@@ -1462,19 +1463,22 @@ async function finalizeProduct(ctx: Ctx, draft: Draft) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data: existingRows } = await sb
       .from('product_variants')
-      .select('id, color, size, print_type, stock_quantity')
+      .select('id, color, size, print_type, stock_quantity, archived_at')
       .eq('product_id', productId);
+    // Читаем таблицу (а не view), поэтому здесь есть и скрытые варианты: такой же
+    // товар+цвет+размер возвращаем из архива, а не создаём дубль (042).
     const existing = (existingRows ?? []).find(
       (v: { color: string | null; size: string | null; print_type: string }) =>
-        norm(v.color) === norm(color) && norm(v.size) === norm(size) && v.print_type === NO_PRINT
+        norm(v.color) === norm(color) && sizeKeyOf(v.size) === sizeKeyOf(size) && v.print_type === NO_PRINT
     );
 
     if (existing) {
       const before = Number(existing.stock_quantity);
       // Обновление «по старому значению» — чтобы параллельное списание не потерялось.
+      const restored = existing.archived_at !== null && existing.archived_at !== undefined;
       const { data: updated } = await sb
         .from('product_variants')
-        .update({ stock_quantity: before + quantity })
+        .update(restored ? { stock_quantity: before + quantity, archived_at: null } : { stock_quantity: before + quantity })
         .eq('id', existing.id)
         .eq('stock_quantity', existing.stock_quantity)
         .select('id');
@@ -1490,7 +1494,7 @@ async function finalizeProduct(ctx: Ctx, draft: Draft) {
         stock_after: before + quantity,
         created_product: createdProduct,
         created_variant: false,
-        details: { title: plainTitle, productName: ap.name },
+        details: { title: plainTitle, productName: ap.name, restored },
       });
       await say(ctx, 'ap.doneExisting', { title, after: fmt(before + quantity), before: fmt(before), added: fmt(quantity) });
       return;
@@ -1671,7 +1675,7 @@ interface BotAction {
   stock_after: number | null;
   created_product: boolean;
   created_variant: boolean;
-  details: { client?: string; items?: ActionItem[]; title?: string; productName?: string } | null;
+  details: { client?: string; items?: ActionItem[]; title?: string; productName?: string; restored?: boolean } | null;
   confirm_tok: string | null;
   undone_at: string | null;
 }
@@ -1913,7 +1917,13 @@ async function undoProductAdded(ctx: Ctx, a: BotAction): Promise<UndoResult> {
       .eq('id', a.variant_id ?? '')
       .eq('stock_quantity', row.stock_quantity)
       .select('id');
-    if (updated && updated.length > 0) return { ok: true, message: tr(ctx, 'undo.doneAdd', { title, current: fmt(current - qty) }) };
+    if (updated && updated.length > 0) {
+      // Вариант вернули из архива этим добавлением — при отмене прячем обратно.
+      if (a.details?.restored && current - qty === 0) {
+        await sb.from('product_variants').update({ archived_at: new Date().toISOString() }).eq('id', a.variant_id ?? '');
+      }
+      return { ok: true, message: tr(ctx, 'undo.doneAdd', { title, current: fmt(current - qty) }) };
+    }
   }
   return { ok: false, message: tr(ctx, 'undo.raced') };
 }

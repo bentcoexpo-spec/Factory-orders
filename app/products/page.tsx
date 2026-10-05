@@ -238,7 +238,12 @@ export default function ProductsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Удалить вариант товара?')) return;
+    if (
+      !confirm(
+        'Удалить вариант?\nЕсли по нему были приходы или заказы, он будет скрыт со «Склада», а сами приходы, заказы и чеки останутся без изменений. Если такой же товар, цвет и размер снова добавят на «Приходе», вариант вернётся.'
+      )
+    )
+      return;
     const { error } = await supabase.from('product_variants_view').delete().eq('id', id);
     if (error) setError(friendlyVariantDeleteError(error.message));
     else loadVariants();

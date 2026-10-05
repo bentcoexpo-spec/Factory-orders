@@ -56,13 +56,10 @@ async function main() {
   const v3Id = v3.rows[0].id;
   await db.query(`insert into stock_receipts (variant_id, packs, units_per_pack, loose_units) values ($1, 0, 0, 10)`, [v3Id]);
   await db.query(`update product_variants_view set stock_quantity = 0 where id = $1`, [v3Id]);
-  let receiptBlockRejected = false;
-  try {
-    await db.query(`delete from product_variants_view where id = $1`, [v3Id]);
-  } catch (e) {
-    receiptBlockRejected = /variant_has_receipts/.test(e.message);
-  }
-  check('вариант с приходом в истории (даже если остаток сейчас 0) удалить нельзя', receiptBlockRejected);
+  // Правило изменено в 042: остаток 0 + история — вариант скрывается (архив), а не отказ.
+  await db.query(`delete from product_variants_view where id = $1`, [v3Id]);
+  const hidden3 = await db.query(`select count(*)::int as n from product_variants_view where id = $1`, [v3Id]);
+  check('вариант с приходом в истории и остатком 0 — скрывается со Склада (архив), без ошибки', hidden3.rows[0].n === 0);
 
   // 4. Вариант, участвовавший в заказе — нельзя, даже с нулевым остатком.
   const v4 = await db.query(
@@ -76,28 +73,22 @@ async function main() {
     client.rows[0].id,
     JSON.stringify([{ variant_id: v4Id, quantity: 1 }]),
   ]);
-  let orderBlockRejected = false;
-  try {
-    await db.query(`delete from product_variants_view where id = $1`, [v4Id]);
-  } catch (e) {
-    orderBlockRejected = /variant_has_orders/.test(e.message);
-  }
-  check('вариант, участвовавший в заказе, удалить нельзя', orderBlockRejected);
+  await db.query(`delete from product_variants_view where id = $1`, [v4Id]);
+  const hidden4 = await db.query(`select count(*)::int as n from product_variants_view where id = $1`, [v4Id]);
+  check('вариант, участвовавший в заказе (остаток 0), — скрывается (архив), без ошибки', hidden4.rows[0].n === 0);
 
-  // 5. CEO по-прежнему может удалить что угодно, включая варианты с историей.
+  // 5. С 042 то же правило и у CEO: с остатком > 0 удалить нельзя.
   await asUser(db, 'ceo');
-  let ceoDeleteWithHistoryWorked = false;
+  const vCeo = await db.query(
+    `insert into product_variants_view (product_name, color, size, stock_quantity) values ('Тест-товар-030', 'CeoЦвет', 'M', 999) returning id`
+  );
+  let ceoStockRejected = false;
   try {
-    const vCeo = await db.query(
-      `insert into product_variants_view (product_name, color, size, stock_quantity) values ('Тест-товар-030', 'CeoЦвет', 'M', 999) returning id`
-    );
     await db.query(`delete from product_variants_view where id = $1`, [vCeo.rows[0].id]);
-    const stillExists = await db.query(`select count(*)::int as n from product_variants where id = $1`, [vCeo.rows[0].id]);
-    ceoDeleteWithHistoryWorked = stillExists.rows[0].n === 0;
   } catch (e) {
-    ceoDeleteWithHistoryWorked = false;
+    ceoStockRejected = /variant_has_stock/.test(e.message);
   }
-  check('CEO по-прежнему может удалить вариант без ограничений (даже с ненулевым остатком)', ceoDeleteWithHistoryWorked);
+  check('CEO: вариант с ненулевым остатком тоже удалить нельзя (одно правило для CEO и кладовщика)', ceoStockRejected);
 
   console.log(`\nИтого: ${passed} прошло, ${failed} провалено.`);
   process.exit(failed > 0 ? 1 : 0);

@@ -11,19 +11,13 @@ export function friendlyBatchStatusError(message: string): string {
   return message;
 }
 
-// Кладовщик может удалить вариант товара только пока по нему нет
-// реальных данных (см. 030_kladovshik_variant_delete.sql) — база
-// отклоняет попытку с техническим кодом в тексте ошибки, переводим в
-// понятную строку.
+// Удаление варианта (042_variant_archive_and_sizes.sql): с остатком больше
+// нуля удалить нельзя; если остаток 0 — вариант удаляется или (когда по нему
+// есть приходы/заказы) скрывается, ошибки в этих случаях нет. Единственный
+// отказ по остатку переводим в понятную строку.
 export function friendlyVariantDeleteError(message: string): string {
   if (message.includes('variant_has_stock')) {
-    return 'Остаток не равен нулю — сначала обнулите остаток на «Складе»';
-  }
-  if (message.includes('variant_has_receipts')) {
-    return 'По этому варианту уже был приход — удалить нельзя';
-  }
-  if (message.includes('variant_has_orders')) {
-    return 'Этот вариант уже участвовал в заказе — удалить нельзя';
+    return 'Сначала обнулите остаток';
   }
   return message;
 }

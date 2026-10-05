@@ -267,6 +267,27 @@ export function sizeRank(size: string | null): number {
   return 5000;
 }
 
+// Один размер — одно написание: 2XL → XXL, 3XL → XXXL, а с четырёх —
+// цифрой: XXXXL → 4XL (также «2 xl», «ХХЛ» кириллицей). Остальные размеры
+// не трогаем. Зеркало public.canonical_size() из
+// supabase/042_variant_archive_and_sizes.sql — правило должно совпадать
+// там и здесь; менять нужно ровно эти две функции.
+export function canonicalSize<T extends string | null | undefined>(size: T): T | string {
+  if (size === null || size === undefined) return size;
+  const u = size
+    .replace(/[хХ]/g, 'X')
+    .replace(/[лЛ]/g, 'L')
+    .replace(/\s+/g, '')
+    .toUpperCase();
+  const fromX = /^X{2,}L$/.test(u) ? u.length - 1 : null;
+  const fromDigit = /^\d+XL$/.test(u) ? Number(u.replace('XL', '')) : null;
+  const n = fromX ?? fromDigit;
+  if (n === null) return size;
+  if (n === 2) return 'XXL';
+  if (n === 3) return 'XXXL';
+  return fromX !== null ? `${n}XL` : u;
+}
+
 export function sortSizes<T extends string | null>(sizes: T[]): T[] {
   return [...sizes].sort((a, b) => sizeRank(a) - sizeRank(b) || String(a ?? '').localeCompare(String(b ?? ''), 'ru'));
 }
