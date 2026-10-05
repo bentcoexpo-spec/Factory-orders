@@ -57,3 +57,16 @@ export function friendlyMoneyError(message: string): string {
   }
   return message;
 }
+
+// Ввод сделки (043_piecework_batch_entry.sql): технические коды базы —
+// в понятные строки; остальное показываем как есть.
+export function friendlyPieceworkError(message: string): string {
+  if (message.includes('operation_rate_not_set')) return 'Сначала укажите ставку операции';
+  if (message.includes('employee_not_in_shop')) return 'Этот сотрудник не из вашего цеха';
+  if (message.includes('batch_not_in_shop')) return 'Эта партия не из вашего цеха';
+  if (message.includes('invalid_quantity')) return 'Количество должно быть целым числом больше нуля';
+  if (message.includes('operation_required')) return 'У одной из строк не выбрана операция';
+  if (message.includes('employee_required')) return 'Выберите сотрудника';
+  if (message.includes('rows_required')) return 'Добавьте хотя бы одну операцию';
+  return message;
+}
