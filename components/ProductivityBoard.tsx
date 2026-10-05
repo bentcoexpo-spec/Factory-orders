@@ -102,14 +102,14 @@ function EmployeeDetail({
   }, [myRecords]);
 
   const strengths = useMemo<StrengthRow[]>(() => {
-    const opIds = Array.from(new Set(myRecords.map((r) => r.operation_type_id)));
+    const opIds = Array.from(new Set(myRecords.map((r) => r.operation_key)));
     const rows = opIds.map((opId) => {
-      const mine = myRecords.filter((r) => r.operation_type_id === opId);
+      const mine = myRecords.filter((r) => r.operation_key === opId);
       const myAvg = mine.reduce((sum, r) => sum + r.quantity, 0) / mine.length;
-      const others = allRecords.filter((r) => r.operation_type_id === opId && r.employee_id !== employee.id);
+      const others = allRecords.filter((r) => r.operation_key === opId && r.employee_id !== employee.id);
       const othersAvg = others.length ? others.reduce((sum, r) => sum + r.quantity, 0) / others.length : null;
       return {
-        operationName: mine[0].operation_name,
+        operationName: mine[0].operation_label,
         myAvg,
         othersAvg,
         delta: othersAvg != null ? myAvg - othersAvg : null,

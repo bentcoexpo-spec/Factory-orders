@@ -70,3 +70,12 @@ export function friendlyPieceworkError(message: string): string {
   if (message.includes('rows_required')) return 'Добавьте хотя бы одну операцию';
   return message;
 }
+
+// Каталог сделки (044): уникальность названий и проверки полей — в понятные строки.
+export function friendlyCatalogError(message: string): string {
+  if (/duplicate key|_active_name_key/i.test(message)) return 'Такое название здесь уже есть';
+  if (/_name_check/.test(message)) return 'Введите название';
+  if (/whole_rate_check/.test(message)) return 'Цена целиком должна быть больше нуля';
+  if (/insufficient_privilege|row-level security/i.test(message)) return 'Нет прав на это действие';
+  return message;
+}

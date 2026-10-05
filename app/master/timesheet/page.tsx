@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Employee } from '@/lib/types';
+import { Employee, Profession } from '@/lib/types';
 import RequireRole from '@/components/RequireRole';
 import { useRole } from '@/components/RoleProvider';
 
@@ -13,6 +13,8 @@ function todayDate() {
 function TimesheetContent() {
   const { shop } = useRole();
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [professions, setProfessions] = useState<Profession[]>([]);
+  const [professionBusyId, setProfessionBusyId] = useState<string | null>(null);
   const [date, setDate] = useState(todayDate());
   const [presentIds, setPresentIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -24,9 +26,26 @@ function TimesheetContent() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function loadEmployees() {
-    const { data, error } = await supabase.from('employees').select('*').order('name');
+    const [{ data, error }, { data: profs }] = await Promise.all([
+      supabase.from('employees').select('*').order('name'),
+      supabase.from('professions').select('id, name, archived_at').is('archived_at', null).order('name'),
+    ]);
     if (error) setError(error.message);
     else setEmployees((data as unknown as Employee[]) ?? []);
+    setProfessions((profs as unknown as Profession[]) ?? []);
+  }
+
+  async function setProfession(emp: Employee, professionId: string) {
+    setProfessionBusyId(emp.id);
+    setError(null);
+    const value = professionId === '' ? null : professionId;
+    const { error } = await supabase.from('employees').update({ profession_id: value }).eq('id', emp.id);
+    setProfessionBusyId(null);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setEmployees((prev) => prev.map((e) => (e.id === emp.id ? { ...e, profession_id: value } : e)));
   }
 
   async function loadAttendance(forDate: string) {
@@ -148,7 +167,26 @@ function TimesheetContent() {
                 key={emp.id}
                 className="flex items-center justify-between gap-2 card"
               >
-                <span className="min-w-0 truncate font-medium text-slate-800">{emp.name}</span>
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-slate-800">{emp.name}</span>
+                  <select
+                    aria-label={`Профессия: ${emp.name}`}
+                    className="mt-1 w-full max-w-[12rem] rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-600 disabled:opacity-50"
+                    value={emp.profession_id ?? ''}
+                    disabled={professionBusyId === emp.id}
+                    onChange={(e) => setProfession(emp, e.target.value)}
+                  >
+                    <option value="">Профессия не указана</option>
+                    {professions.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                    {emp.profession_id && !professions.some((p) => p.id === emp.profession_id) && (
+                      <option value={emp.profession_id}>(скрытая профессия)</option>
+                    )}
+                  </select>
+                </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <button
                     type="button"

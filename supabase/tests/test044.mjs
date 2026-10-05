@@ -56,7 +56,7 @@ async function main() {
   check('до 043: смена ставки пересчитывала старую запись (проблема, которую чиним)', Number((await db.query(`select line_total from work_records_view`)).rows[0].line_total) === 2000);
   await db.query(`update operation_types set rate_per_piece = 150 where id = $1`, [opOld]);
 
-  await applyMigrations(db, { from: '043_piecework_batch_entry.sql' });
+  await applyMigrations(db, { from: '043_piecework_batch_entry.sql', upTo: '043_piecework_batch_entry.sql' });
   await db.query('reset role');
   const stored = (await db.query(`select rate_per_piece from work_records`)).rows[0];
   check('после 043: у старой записи ставка = текущая ставка операции (150), данные на экране не изменились', Number(stored.rate_per_piece) === 150);

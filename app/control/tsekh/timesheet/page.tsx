@@ -13,6 +13,14 @@ function todayDate() {
 function TimesheetControlContent() {
   const [shop, setShop] = useState<Shop>('factory');
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [professionNames, setProfessionNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    supabase
+      .from('professions')
+      .select('id, name')
+      .then(({ data }) => setProfessionNames(Object.fromEntries(((data ?? []) as { id: string; name: string }[]).map((p) => [p.id, p.name]))));
+  }, []);
   const [date, setDate] = useState(todayDate());
   const [presentIds, setPresentIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -84,7 +92,12 @@ function TimesheetControlContent() {
                 key={emp.id}
                 className="flex items-center justify-between gap-2 card"
               >
-                <span className="min-w-0 truncate font-medium text-slate-800">{emp.name}</span>
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-slate-800">{emp.name}</span>
+                  <span className="text-xs text-slate-500">
+                    {emp.profession_id ? (professionNames[emp.profession_id] ?? 'Профессия указана') : 'Профессия не указана'}
+                  </span>
+                </div>
                 <span
                   className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium ${
                     present ? 'bg-success-100 text-success-700' : 'bg-slate-100 text-slate-500'

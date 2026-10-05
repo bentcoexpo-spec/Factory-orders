@@ -114,9 +114,11 @@ async function main() {
   await asUser(db, 'ceo');
   const empF = (await db.query(`insert into employees (name, shop) values ('Сотр-Фабрика', 'factory') returning id`)).rows[0].id;
   const empW = (await db.query(`insert into employees (name, shop) values ('Сотр-Цех', 'workshop') returning id`)).rows[0].id;
-  const op = (await db.query(`insert into operation_types (name, rate_per_piece) values ('Строчка', 100) returning id`)).rows[0].id;
+  const profI = (await db.query(`insert into professions (name) values ('Проф-изол') returning id`)).rows[0].id;
+  const modI = (await db.query(`insert into catalog_models (profession_id, name) values ($1, 'Мод-изол') returning id`, [profI])).rows[0].id;
+  const op = (await db.query(`insert into catalog_operations (model_id, name, rate_per_piece) values ($1, 'Строчка', 100) returning id`, [modI])).rows[0].id;
   await db.query(`insert into attendance (employee_id, date) values ($1, current_date), ($2, current_date)`, [empF, empW]);
-  await db.query(`insert into work_records (employee_id, operation_type_id, quantity) values ($1, $3, 1), ($2, $3, 2)`, [empF, empW, op]);
+  await db.query(`insert into work_records (employee_id, catalog_operation_id, quantity) values ($1, $3, 1), ($2, $3, 2)`, [empF, empW, op]);
 
   // Мастер без выбранного цеха — не видит ничего цехового.
   await asUser(db, 'master');

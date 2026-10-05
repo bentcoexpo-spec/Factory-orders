@@ -205,17 +205,22 @@ async function main() {
   const rateCheck = await db.query(`select rate_per_piece from operation_types where id = $1`, [op1.rows[0].id]);
   check('ставку можно поменять', Number(rateCheck.rows[0].rate_per_piece) === 20);
 
+  // С 044 записи ссылаются на каталог (профессия → модель → операция).
+  const profM = await db.query(`insert into professions (name) values ('Проф-master') returning id`);
+  const modM = await db.query(`insert into catalog_models (profession_id, name) values ($1, 'Мод-master') returning id`, [profM.rows[0].id]);
+  const cop1 = await db.query(`insert into catalog_operations (model_id, name, rate_per_piece) values ($1, 'Оверлок', 20) returning id`, [modM.rows[0].id]);
+  const cop2 = await db.query(`insert into catalog_operations (model_id, name, rate_per_piece) values ($1, 'Утюжка', 5) returning id`, [modM.rows[0].id]);
   const wr1 = await db.query(
-    `insert into work_records (employee_id, operation_type_id, quantity, date) values ($1, $2, 30, $3) returning id, created_by`,
-    [emp1.rows[0].id, op1.rows[0].id, today]
+    `insert into work_records (employee_id, catalog_operation_id, quantity, date) values ($1, $2, 30, $3) returning id, created_by`,
+    [emp1.rows[0].id, cop1.rows[0].id, today]
   );
   check('created_by у записи работы проставлен', wr1.rows[0].created_by === UIDS.master);
 
   // Тот же сотрудник, другая операция, тот же день — разрешено
   const op2 = await db.query(`insert into operation_types (name, rate_per_piece) values ('Утюжка', 5) returning id`);
-  await db.query(`insert into work_records (employee_id, operation_type_id, quantity, date, batch_id) values ($1, $2, 12, $3, $4)`, [
+  await db.query(`insert into work_records (employee_id, catalog_operation_id, quantity, date, batch_id) values ($1, $2, 12, $3, $4)`, [
     emp1.rows[0].id,
-    op2.rows[0].id,
+    cop2.rows[0].id,
     today,
     batchId,
   ]);
@@ -234,9 +239,9 @@ async function main() {
 
   let zeroQtyRejected = false;
   try {
-    await db.query(`insert into work_records (employee_id, operation_type_id, quantity, date) values ($1, $2, 0, $3)`, [
+    await db.query(`insert into work_records (employee_id, catalog_operation_id, quantity, date) values ($1, $2, 0, $3)`, [
       emp1.rows[0].id,
-      op1.rows[0].id,
+      cop1.rows[0].id,
       today,
     ]);
   } catch (e) {

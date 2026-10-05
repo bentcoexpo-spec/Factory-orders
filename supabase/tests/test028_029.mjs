@@ -63,9 +63,11 @@ async function main() {
   await asUser(db, 'master');
   const emp = await db.query(`insert into employees (name) values ('Удаляемый Сотрудник') returning id`);
   const empId = emp.rows[0].id;
-  const op = await db.query(`insert into operation_types (name, rate_per_piece) values ('Тест-операция', 5) returning id`);
-  await db.query(`insert into work_records (employee_id, operation_type_id, quantity, date) values ($1, $2, 10, current_date)`, [empId, op.rows[0].id]);
-  await db.query(`insert into work_records (employee_id, operation_type_id, quantity, date) values ($1, $2, 5, current_date)`, [empId, op.rows[0].id]);
+  const profP = await db.query(`insert into professions (name) values ('Проф-029') returning id`);
+  const modP = await db.query(`insert into catalog_models (profession_id, name) values ($1, 'Мод-029') returning id`, [profP.rows[0].id]);
+  const op = await db.query(`insert into catalog_operations (model_id, name, rate_per_piece) values ($1, 'Тест-операция', 5) returning id`, [modP.rows[0].id]);
+  await db.query(`insert into work_records (employee_id, catalog_operation_id, quantity, date) values ($1, $2, 10, current_date)`, [empId, op.rows[0].id]);
+  await db.query(`insert into work_records (employee_id, catalog_operation_id, quantity, date) values ($1, $2, 5, current_date)`, [empId, op.rows[0].id]);
   const today = new Date().toISOString().slice(0, 10);
   await db.query(`insert into attendance (employee_id, date) values ($1, $2)`, [empId, today]);
 
@@ -83,8 +85,8 @@ async function main() {
   check('после удаления: записи сделки исчезли каскадом', afterWr.rows[0].n === 0);
   check('после удаления: явка исчезла каскадом', afterAtt.rows[0].n === 0);
 
-  // operation_types НЕ должен пострадать (это справочник, не история сотрудника)
-  const opStill = await db.query(`select count(*)::int as n from operation_types where id=$1`, [op.rows[0].id]);
+  // операция каталога НЕ должна пострадать (это справочник, не история сотрудника)
+  const opStill = await db.query(`select count(*)::int as n from catalog_operations where id=$1`, [op.rows[0].id]);
   check('тип операции остался (это общий справочник, не история сотрудника)', opStill.rows[0].n === 1);
 
   console.log(`\nИтого: ${passed} прошло, ${failed} провалено.`);

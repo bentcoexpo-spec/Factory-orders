@@ -86,11 +86,13 @@ async function main() {
   );
   check('мастер может отметить явку своему сотруднику', !!attendanceOk.rows[0]?.id);
 
-  const opType = await db.query(
-    `insert into operation_types (name, rate_per_piece) values ('Оверлок-031', 100) returning id`
-  );
+  const opType = await (async () => {
+    const pr = await db.query(`insert into professions (name) values ('Проф-031') returning id`);
+    const md = await db.query(`insert into catalog_models (profession_id, name) values ($1, 'Модель-031') returning id`, [pr.rows[0].id]);
+    return db.query(`insert into catalog_operations (model_id, name, rate_per_piece) values ($1, 'Оверлок-031', 100) returning id`, [md.rows[0].id]);
+  })();
   const workRecordOk = await db.query(
-    `insert into work_records (employee_id, operation_type_id, quantity) values ($1, $2, 3) returning id`,
+    `insert into work_records (employee_id, catalog_operation_id, quantity) values ($1, $2, 3) returning id`,
     [emp1.rows[0].id, opType.rows[0].id]
   );
   check('мастер может завести сделку своему сотруднику', !!workRecordOk.rows[0]?.id);

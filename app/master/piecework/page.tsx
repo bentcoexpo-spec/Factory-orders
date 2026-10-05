@@ -2,18 +2,19 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { CuttingBatch, Employee, OperationType, WorkRecord } from '@/lib/types';
+import { CuttingBatch, Employee, WorkRecord } from '@/lib/types';
 import { formatMoney } from '@/lib/format';
 import { formatDateOnly, todayDate } from '@/lib/dates';
 import { friendlyPieceworkError } from '@/lib/errors';
 import RequireRole from '@/components/RequireRole';
-import MoneyInput from '@/components/MoneyInput';
-import OperationPicker from '@/components/OperationPicker';
-import { moneyDigits } from '@/lib/money';
+import CatalogPicker from '@/components/CatalogPicker';
+import { CatalogData, loadCatalog } from '@/lib/catalog';
+import { Target, describeTarget, targetKey } from '@/lib/catalogTarget';
+import Link from 'next/link';
 
 interface EntryRow {
   key: number;
-  operationId: string;
+  target: Target | null;
   quantity: string;
   batch: CuttingBatch | null;
   batchPickerOpen: boolean;
@@ -21,7 +22,17 @@ interface EntryRow {
 
 let rowKeySeq = 1;
 function emptyRow(): EntryRow {
-  return { key: rowKeySeq++, operationId: '', quantity: '', batch: null, batchPickerOpen: false };
+  return { key: rowKeySeq++, target: null, quantity: '', batch: null, batchPickerOpen: false };
+}
+
+function recordTarget(r: WorkRecord): Target | null {
+  if (r.catalog_operation_id) return { kind: 'op', id: r.catalog_operation_id };
+  if (r.model_id) return { kind: 'whole', modelId: r.model_id };
+  return null;
+}
+
+function targetPayload(t: Target) {
+  return t.kind === 'op' ? { catalog_operation_id: t.id } : { model_id: t.modelId };
 }
 
 function digitsOnly(value: string) {
@@ -112,7 +123,7 @@ function BatchField({
 function PieceworkContent() {
   const [date, setDate] = useState(todayDate());
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [operationTypes, setOperationTypes] = useState<OperationType[]>([]);
+  const [catalog, setCatalog] = useState<CatalogData>({ professions: [], models: [], operations: [] });
   const [records, setRecords] = useState<WorkRecord[]>([]);
   const [recentBatches, setRecentBatches] = useState<CuttingBatch[]>([]);
 
@@ -126,32 +137,25 @@ function PieceworkContent() {
   const [saving, setSaving] = useState(false);
 
   const [editId, setEditId] = useState<string | null>(null);
-  const [editOperationId, setEditOperationId] = useState('');
+  const [editTarget, setEditTarget] = useState<Target | null>(null);
   const [editQuantity, setEditQuantity] = useState('');
   const [editBatch, setEditBatch] = useState<CuttingBatch | null>(null);
   const [editBatchOpen, setEditBatchOpen] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
 
-  const [opSearch, setOpSearch] = useState('');
-  const [newOperationName, setNewOperationName] = useState('');
-  const [newOperationRate, setNewOperationRate] = useState('');
-  const [addingOperation, setAddingOperation] = useState(false);
-  const [rateDrafts, setRateDrafts] = useState<Record<string, string>>({});
 
   async function loadStatic() {
-    const [{ data: emp }, { data: ops }, { data: batches }] = await Promise.all([
+    const [{ data: emp }, { data: batches }] = await Promise.all([
       supabase.from('employees').select('*').order('name'),
-      supabase.from('operation_types').select('*').order('name'),
       supabase.from('cutting_batches_view').select('*').order('created_at', { ascending: false }).limit(30),
     ]);
     setEmployees((emp as unknown as Employee[]) ?? []);
-    setOperationTypes((ops as unknown as OperationType[]) ?? []);
     setRecentBatches((batches as unknown as CuttingBatch[]) ?? []);
-    const drafts: Record<string, string> = {};
-    (ops ?? []).forEach((o) => {
-      drafts[o.id] = moneyDigits(o.rate_per_piece);
-    });
-    setRateDrafts(drafts);
+    try {
+      setCatalog(await loadCatalog());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось загрузить каталог');
+    }
   }
 
   async function loadRecords(forDate: string) {
@@ -174,17 +178,17 @@ function PieceworkContent() {
     loadRecords(date);
   }, [date]);
 
-  const opById = useMemo(() => new Map(operationTypes.map((o) => [o.id, o])), [operationTypes]);
-  const employeeName = employees.find((e) => e.id === employeeId)?.name ?? '';
+  const employee = employees.find((e) => e.id === employeeId);
+  const employeeName = employee?.name ?? '';
 
-  // Операции, которые у выбранного сотрудника уже записаны за этот день.
-  const savedOps = useMemo(
-    () => new Set(records.filter((r) => r.employee_id === employeeId).map((r) => r.operation_type_id)),
+  // Что у выбранного сотрудника уже записано за этот день (операция или целое изделие).
+  const savedKeys = useMemo(
+    () => new Set(records.filter((r) => r.employee_id === employeeId).map((r) => r.operation_key)),
     [records, employeeId]
   );
 
   function rowRate(row: EntryRow): number {
-    return opById.get(row.operationId)?.rate_per_piece ?? 0;
+    return describeTarget(catalog, row.target)?.rate ?? 0;
   }
   function rowSum(row: EntryRow): number {
     const qty = Number(row.quantity);
@@ -196,11 +200,12 @@ function PieceworkContent() {
   // этого сотрудника или повторяется в самой форме. Не запрещает (утром и
   // вечером — допустимо), только напоминает.
   function duplicateNote(row: EntryRow): string | null {
-    if (!row.operationId) return null;
-    if (employeeId && savedOps.has(row.operationId)) {
+    if (!row.target) return null;
+    const key = targetKey(row.target);
+    if (employeeId && savedKeys.has(key)) {
       return 'Эта операция у сотрудника за этот день уже записана — не вносите её дважды случайно.';
     }
-    if (rows.filter((r) => r.operationId === row.operationId).length > 1) {
+    if (rows.filter((r) => r.target && targetKey(r.target) === key).length > 1) {
       return 'Эта операция уже есть в списке — убедитесь, что это не повтор.';
     }
     return null;
@@ -224,21 +229,21 @@ function PieceworkContent() {
       setError('Выберите сотрудника');
       return;
     }
-    const filled = rows.filter((r) => r.operationId || r.quantity);
+    const filled = rows.filter((r) => r.target || r.quantity);
     if (filled.length === 0) {
       setError('Добавьте хотя бы одну операцию');
       return;
     }
-    const bad = filled.filter((r) => !r.operationId || !(Number(r.quantity) > 0));
+    const bad = filled.filter((r) => !r.target || !(Number(r.quantity) > 0));
     if (bad.length > 0) {
       setInvalidKeys(bad.map((r) => r.key));
       setError('В выделенных строках укажите и операцию, и количество');
       return;
     }
 
-    const dupes = filled.filter((r) => savedOps.has(r.operationId));
+    const dupes = filled.filter((r) => r.target && savedKeys.has(targetKey(r.target)));
     if (dupes.length > 0) {
-      const names = Array.from(new Set(dupes.map((r) => opById.get(r.operationId)?.name ?? ''))).join(', ');
+      const names = Array.from(new Set(dupes.map((r) => describeTarget(catalog, r.target)?.label ?? ''))).join(', ');
       if (!confirm(`У сотрудника «${employeeName}» за ${formatDateOnly(date)} уже есть: ${names}.\nСохранить ещё раз?`)) {
         return;
       }
@@ -249,7 +254,7 @@ function PieceworkContent() {
       p_employee_id: employeeId,
       p_date: date,
       p_rows: filled.map((r) => ({
-        operation_type_id: r.operationId,
+        ...targetPayload(r.target as Target),
         quantity: Number(r.quantity),
         batch_id: r.batch?.id ?? null,
       })),
@@ -278,7 +283,7 @@ function PieceworkContent() {
     setError(null);
     setSuccess(null);
     setEditId(r.id);
-    setEditOperationId(r.operation_type_id);
+    setEditTarget(recordTarget(r));
     setEditQuantity(String(r.quantity));
     setEditBatch(r.batch_id ? (recentBatches.find((b) => b.id === r.batch_id) ?? null) : null);
     setEditBatchOpen(false);
@@ -286,16 +291,17 @@ function PieceworkContent() {
 
   async function saveEdit(r: WorkRecord) {
     const qty = Number(editQuantity);
-    if (!editOperationId || !(qty > 0)) {
+    if (!editTarget || !(qty > 0)) {
       setError('Укажите операцию и количество');
       return;
     }
-    const newOp = opById.get(editOperationId);
-    const opChanged = editOperationId !== r.operation_type_id;
-    const newRate = opChanged ? (newOp?.rate_per_piece ?? 0) : r.rate_per_piece;
+    const orig = recordTarget(r);
+    const targetChanged = !orig || targetKey(orig) !== targetKey(editTarget);
+    const newInfo = describeTarget(catalog, editTarget);
+    const newRate = targetChanged ? (newInfo?.rate ?? 0) : r.rate_per_piece;
     if (
       !confirm(
-        `Изменить запись «${r.employee_name}»?\nБыло: ${r.operation_name}, ${r.quantity} шт × ${formatMoney(r.rate_per_piece)} = ${formatMoney(r.line_total)}\nСтанет: ${newOp?.name ?? r.operation_name}, ${qty} шт × ${formatMoney(newRate)} = ${formatMoney(qty * newRate)}${opChanged ? '\nСтавка берётся у новой операции.' : '\nСтавка записи остаётся прежней.'}`
+        `Изменить запись «${r.employee_name}»?\nБыло: ${r.operation_label}, ${r.quantity} шт × ${formatMoney(r.rate_per_piece)} = ${formatMoney(r.line_total)}\nСтанет: ${newInfo?.label ?? r.operation_label}, ${qty} шт × ${formatMoney(newRate)} = ${formatMoney(qty * newRate)}${targetChanged ? '\nСтавка берётся из каталога по новой операции.' : '\nСтавка записи остаётся прежней.'}`
       )
     ) {
       return;
@@ -304,7 +310,12 @@ function PieceworkContent() {
     setError(null);
     const { error: updateError } = await supabase
       .from('work_records')
-      .update({ operation_type_id: editOperationId, quantity: qty, batch_id: editBatch?.id ?? null })
+      .update({
+        catalog_operation_id: editTarget.kind === 'op' ? editTarget.id : null,
+        model_id: editTarget.kind === 'whole' ? editTarget.modelId : null,
+        quantity: qty,
+        batch_id: editBatch?.id ?? null,
+      })
       .eq('id', r.id);
     setEditBusy(false);
     if (updateError) {
@@ -318,7 +329,7 @@ function PieceworkContent() {
   async function deleteRecord(r: WorkRecord) {
     if (
       !confirm(
-        `Удалить запись?\n${r.employee_name}: ${r.operation_name}, ${r.quantity} шт × ${formatMoney(r.rate_per_piece)} = ${formatMoney(r.line_total)}`
+        `Удалить запись?\n${r.employee_name}: ${r.operation_label}, ${r.quantity} шт × ${formatMoney(r.rate_per_piece)} = ${formatMoney(r.line_total)}`
       )
     ) {
       return;
@@ -333,40 +344,6 @@ function PieceworkContent() {
     loadRecords(date);
   }
 
-  async function handleAddOperation() {
-    const name = newOperationName.trim();
-    if (!name) return;
-    setAddingOperation(true);
-    setError(null);
-    const { data, error } = await supabase
-      .from('operation_types')
-      .insert({ name, rate_per_piece: Number(newOperationRate) || 0 })
-      .select()
-      .single();
-    setAddingOperation(false);
-    if (error) {
-      setError(error.message);
-      return;
-    }
-    const op = data as unknown as OperationType;
-    setOperationTypes((prev) => [...prev, op].sort((a, b) => a.name.localeCompare(b.name)));
-    setRateDrafts((prev) => ({ ...prev, [op.id]: moneyDigits(op.rate_per_piece) }));
-    setNewOperationName('');
-    setNewOperationRate('');
-  }
-
-  async function saveRate(opId: string) {
-    const value = Number(rateDrafts[opId] || 0);
-    const current = operationTypes.find((o) => o.id === opId);
-    if (current && Number(current.rate_per_piece) === value) return;
-    const { error } = await supabase.from('operation_types').update({ rate_per_piece: value }).eq('id', opId);
-    if (error) {
-      setError(error.message);
-      return;
-    }
-    setOperationTypes((prev) => prev.map((o) => (o.id === opId ? { ...o, rate_per_piece: value } : o)));
-  }
-
   // Записи за день по сотрудникам: под именем — его операции, сумма и итог.
   const groups = useMemo(() => {
     const map = new Map<string, { name: string; items: WorkRecord[]; total: number }>();
@@ -379,12 +356,6 @@ function PieceworkContent() {
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }, [records]);
   const grandTotal = groups.reduce((sum, g) => sum + g.total, 0);
-
-  const visibleOperations = useMemo(() => {
-    const q = opSearch.trim().toLowerCase();
-    return q ? operationTypes.filter((o) => o.name.toLowerCase().includes(q)) : operationTypes;
-  }, [operationTypes, opSearch]);
-  const withoutRate = operationTypes.filter((o) => !(o.rate_per_piece > 0)).length;
 
   return (
     <div className="space-y-6">
@@ -437,11 +408,12 @@ function PieceworkContent() {
                     ×
                   </button>
                 </div>
-                <OperationPicker
-                  operations={operationTypes}
-                  value={row.operationId}
-                  invalid={invalid && !row.operationId}
-                  onChange={(id) => updateRow(row.key, { operationId: id })}
+                <CatalogPicker
+                  data={catalog}
+                  value={row.target}
+                  employeeProfessionId={employee?.profession_id ?? null}
+                  invalid={invalid && !row.target}
+                  onChange={(t) => updateRow(row.key, { target: t })}
                 />
                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
                   <label className="flex items-center gap-2">
@@ -455,7 +427,7 @@ function PieceworkContent() {
                     />
                   </label>
                   <p className="ml-auto text-right text-sm">
-                    {row.operationId ? (
+                    {row.target ? (
                       <>
                         <span className="text-slate-500">× {formatMoney(rate)} = </span>
                         <span className="font-semibold text-slate-900">{formatMoney(rowSum(row))}</span>
@@ -516,7 +488,7 @@ function PieceworkContent() {
                     <div key={r.id} className="py-2.5">
                       <div className="flex items-start justify-between gap-3 text-sm">
                         <div className="min-w-0">
-                          <p className="font-medium text-slate-800">{r.operation_name}</p>
+                          <p className="font-medium text-slate-800">{r.operation_label}</p>
                           <p className="text-xs text-slate-500">
                             {r.quantity} шт × {formatMoney(r.rate_per_piece)}
                             {r.batch_number != null ? ` · Партия №${r.batch_number}` : ''}
@@ -536,7 +508,12 @@ function PieceworkContent() {
                       )}
                       {editId === r.id && (
                         <div className="mt-2 space-y-2 rounded-md bg-slate-50 p-3">
-                          <OperationPicker operations={operationTypes} value={editOperationId} onChange={setEditOperationId} />
+                          <CatalogPicker
+                            data={catalog}
+                            value={editTarget}
+                            employeeProfessionId={employees.find((e) => e.id === r.employee_id)?.profession_id ?? null}
+                            onChange={setEditTarget}
+                          />
                           <label className="flex items-center gap-2">
                             <span className="text-xs font-medium text-slate-500">Штук</span>
                             <input
@@ -586,68 +563,14 @@ function PieceworkContent() {
       )}
 
       <div className="card">
-        <h2 className="mb-1 text-sm font-semibold text-slate-700">Типы операций и ставки</h2>
+        <h2 className="mb-1 text-sm font-semibold text-slate-700">Ставки и операции</h2>
         <p className="mb-3 text-xs text-slate-500">
-          Ставка фиксируется в записи в момент сохранения: если её потом поменять, старые записи не пересчитываются.
+          Модели, операции и ставки ведутся в каталоге. Ставка фиксируется в записи в момент сохранения: если её потом
+          поменять, старые записи не пересчитываются.
         </p>
-        {withoutRate > 0 && (
-          <p className="mb-3 rounded-md bg-warning-50 px-3 py-2 text-sm font-medium text-warning-700">
-            Без ставки: {withoutRate} — такие операции нельзя выбрать в записи, пока не указана ставка.
-          </p>
-        )}
-        <input
-          className="input mb-3"
-          placeholder="Поиск по названию"
-          value={opSearch}
-          onChange={(e) => setOpSearch(e.target.value)}
-        />
-        <div className="space-y-2">
-          {visibleOperations.length === 0 && <p className="text-sm text-slate-400">Ничего не найдено</p>}
-          {visibleOperations.map((op) => {
-            const noRate = !(op.rate_per_piece > 0);
-            return (
-              <div
-                key={op.id}
-                className={`flex items-center justify-between gap-2 rounded-md px-2 py-1.5 ${
-                  noRate ? 'border border-warning-300 bg-warning-50' : ''
-                }`}
-              >
-                <div className="min-w-0">
-                  <span className="block truncate text-sm text-slate-800">{op.name}</span>
-                  {noRate && <span className="text-xs font-medium text-warning-700">ставка не задана</span>}
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <MoneyInput
-                    className="input w-28 px-2 py-1.5"
-                    value={rateDrafts[op.id] ?? ''}
-                    placeholder="0"
-                    onChange={(digits) => setRateDrafts((prev) => ({ ...prev, [op.id]: digits }))}
-                    onBlur={() => saveRate(op.id)}
-                  />
-                  <span className="text-xs text-slate-400">сум/шт</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="mt-4 flex gap-2 border-t border-slate-200 pt-3">
-          <input
-            className="input min-w-0 flex-1"
-            placeholder="Новый тип операции"
-            value={newOperationName}
-            onChange={(e) => setNewOperationName(e.target.value)}
-          />
-          <MoneyInput className="input w-28 shrink-0" placeholder="сум/шт" value={newOperationRate} onChange={setNewOperationRate} />
-          <button
-            type="button"
-            onClick={handleAddOperation}
-            disabled={addingOperation || !newOperationName.trim()}
-            className="btn-primary shrink-0"
-          >
-            {addingOperation ? '…' : 'Добавить'}
-          </button>
-        </div>
+        <Link href="/master/catalog" className="btn-tonal inline-flex">
+          Открыть каталог
+        </Link>
       </div>
     </div>
   );

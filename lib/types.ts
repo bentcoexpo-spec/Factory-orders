@@ -603,7 +603,35 @@ export interface Employee {
   id: string;
   name: string;
   shop: Shop;
+  profession_id: string | null;
   created_at: string;
+}
+
+// Каталог расценок сделки (044_piecework_catalog.sql), общий для обоих
+// цехов: профессия → модель → операция с расценкой за штуку. Одна и та же
+// операция может стоить по-разному в разных моделях. whole_rate — цена
+// «целого изделия» (null — такой цены нет). Скрытые (archived_at) — те, что
+// удалили, пока по ним уже были записи: из выбора пропадают, записи остаются.
+export interface Profession {
+  id: string;
+  name: string;
+  archived_at: string | null;
+}
+
+export interface CatalogModel {
+  id: string;
+  profession_id: string;
+  name: string;
+  whole_rate: number | null;
+  archived_at: string | null;
+}
+
+export interface CatalogOperation {
+  id: string;
+  model_id: string;
+  name: string;
+  rate_per_piece: number;
+  archived_at: string | null;
 }
 
 // Ряд из attendance_view — отметка явки. Строка существует = сотрудник
@@ -634,7 +662,8 @@ export interface WorkRecord {
   id: string;
   employee_id: string;
   employee_name: string;
-  operation_type_id: string;
+  // Прежняя плоская операция — только у старых записей; новые ссылаются на каталог.
+  operation_type_id: string | null;
   operation_name: string;
   rate_per_piece: number;
   quantity: number;
@@ -644,4 +673,15 @@ export interface WorkRecord {
   batch_number: number | null;
   created_by: string | null;
   created_at: string;
+  catalog_operation_id: string | null;
+  model_id: string | null;
+  model_name: string | null;
+  profession_id: string | null;
+  profession_name: string | null;
+  // Целое изделие (цена модели целиком), без операции.
+  is_whole: boolean;
+  // «Модель · Операция» (для «Прежних операций» — просто название).
+  operation_label: string;
+  // Стабильный ключ операции для группировки: 'op:<id>' или 'whole:<id модели>'.
+  operation_key: string;
 }

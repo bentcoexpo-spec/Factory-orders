@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Shop, WorkRecord } from '@/lib/types';
-import { formatDate, formatMoney } from '@/lib/format';
+import { formatMoney } from '@/lib/format';
+import { formatDateOnly } from '@/lib/dates';
 import RequireRole from '@/components/RequireRole';
 import ShopToggle from '@/components/ShopToggle';
 
@@ -78,14 +79,14 @@ function PieceworkControlContent() {
 
       {!loading && (
         <div className="card">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">Записи за {formatDate(`${date}T00:00:00`)}</h2>
+          <h2 className="mb-3 text-sm font-semibold text-slate-700">Записи за {formatDateOnly(date)}</h2>
           {records.length === 0 && <p className="text-sm text-slate-400">Записей пока нет</p>}
           <div className="space-y-2">
             {records.map((r) => (
               <div key={r.id} className="flex items-center justify-between border-b border-slate-100 pb-2 text-sm last:border-0 last:pb-0">
                 <div>
                   <p className="font-medium text-slate-800">
-                    {r.employee_name} <span className="text-slate-400">· {r.operation_name}</span>
+                    {r.employee_name} <span className="text-slate-400">· {r.operation_label}</span>
                   </p>
                   <p className="text-xs text-slate-400">
                     {r.quantity} шт × {formatMoney(r.rate_per_piece)}

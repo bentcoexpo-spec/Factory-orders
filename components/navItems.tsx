@@ -249,6 +249,13 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['master'],
   },
   {
+    href: '/master/catalog',
+    label: 'Каталог',
+    shortLabel: 'Каталог',
+    icon: IconBox,
+    roles: ['master'],
+  },
+  {
     href: '/master/productivity',
     label: 'Продуктивность',
     shortLabel: 'Люди',
@@ -308,6 +315,14 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Сделка',
     shortLabel: 'Сделка',
     icon: IconCoins,
+    roles: ['ceo'],
+    group: 'tsekh',
+  },
+  {
+    href: '/control/tsekh/catalog',
+    label: 'Каталог',
+    shortLabel: 'Каталог',
+    icon: IconBox,
     roles: ['ceo'],
     group: 'tsekh',
   },
@@ -405,6 +420,11 @@ export function isNavItemActive(href: string, pathname: string) {
     // исключения общий startsWith ниже подсвечивал бы и "Долги" тоже,
     // раз их путь тоже начинается с "/finance/".
     return pathname === '/finance' || pathname.startsWith('/finance/clients');
+  }
+  if (href === '/control/tsekh') {
+    // Сводка цеха — отдельная вкладка; '/control/tsekh/batches', '/catalog'…
+    // — свои вкладки, а не её подстраницы (иначе «Сводка» горела бы везде).
+    return pathname === '/control/tsekh';
   }
   if (href === '/control/zakroyshik') {
     // '/control/zakroyshik/requests' — отдельная вкладка "Заявка", не
