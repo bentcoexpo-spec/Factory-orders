@@ -685,3 +685,25 @@ export interface WorkRecord {
   // Стабильный ключ операции для группировки: 'op:<id>' или 'whole:<id модели>'.
   operation_key: string;
 }
+
+// Бот работников цеха (045)
+export type WorkerBotStatus = 'registering' | 'pending' | 'active' | 'rejected' | 'removed';
+
+export interface WorkerBotInvite {
+  id: string;
+  token: string;
+  shop: Shop;
+  profession_id: string;
+  active: boolean;
+  created_at: string;
+}
+
+export interface WorkerBotUser {
+  id: string;
+  full_name: string | null;
+  shop: Shop;
+  status: WorkerBotStatus;
+  employee_id: string | null;
+  invite_profession_id: string | null;
+  created_at: string;
+}

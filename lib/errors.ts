@@ -79,3 +79,17 @@ export function friendlyCatalogError(message: string): string {
   if (/insufficient_privilege|row-level security/i.test(message)) return 'Нет прав на это действие';
   return message;
 }
+
+// Бот работников (045): коды ошибок базы и маршрута → понятные строки.
+export function friendlyBotError(message: string): string {
+  if (message.includes('shop_not_selected')) return 'Сначала выберите цех';
+  if (message.includes('not_your_shop')) return 'Это относится к другому цеху — выберите нужный цех';
+  if (message.includes('profession_not_found')) return 'Профессия не найдена или скрыта';
+  if (message.includes('already_decided')) return 'Заявка уже обработана';
+  if (message.includes('employee_name_taken')) return 'Сотрудник с таким именем уже есть в Табеле — выберите его из списка';
+  if (message.includes('employee_taken')) return 'Этот сотрудник уже привязан к другому работнику';
+  if (message.includes('employee_not_in_shop')) return 'Сотрудник из другого цеха';
+  if (message.includes('worker_not_found')) return 'Работник не найден';
+  if (message.includes('insufficient_privilege')) return 'Нет прав на это действие';
+  return message;
+}

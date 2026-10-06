@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase';
 import { Employee, Profession } from '@/lib/types';
 import RequireRole from '@/components/RequireRole';
 import { useRole } from '@/components/RoleProvider';
+import { decideWorker } from '@/components/WorkerBotPanel';
+import { friendlyBotError } from '@/lib/errors';
 
 function todayDate() {
   return new Date().toISOString().slice(0, 10);
@@ -15,6 +17,8 @@ function TimesheetContent() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [professions, setProfessions] = useState<Profession[]>([]);
   const [professionBusyId, setProfessionBusyId] = useState<string | null>(null);
+  // Сотрудники, которые подключены к боту: employee_id → id работника в боте.
+  const [botUsers, setBotUsers] = useState<Map<string, string>>(new Map());
   const [date, setDate] = useState(todayDate());
   const [presentIds, setPresentIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -26,10 +30,12 @@ function TimesheetContent() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function loadEmployees() {
-    const [{ data, error }, { data: profs }] = await Promise.all([
+    const [{ data, error }, { data: profs }, { data: bots }] = await Promise.all([
       supabase.from('employees').select('*').order('name'),
       supabase.from('professions').select('id, name, archived_at').is('archived_at', null).order('name'),
+      supabase.from('worker_bot_users').select('id, employee_id').eq('status', 'active'),
     ]);
+    setBotUsers(new Map((bots ?? []).filter((b) => b.employee_id).map((b) => [b.employee_id as string, b.id as string])));
     if (error) setError(error.message);
     else setEmployees((data as unknown as Employee[]) ?? []);
     setProfessions((profs as unknown as Profession[]) ?? []);
@@ -46,6 +52,23 @@ function TimesheetContent() {
       return;
     }
     setEmployees((prev) => prev.map((e) => (e.id === emp.id ? { ...e, profession_id: value } : e)));
+  }
+
+  async function unlinkBot(emp: Employee) {
+    const botId = botUsers.get(emp.id);
+    if (!botId) return;
+    if (!confirm(`Снять «${emp.name}» с бота? Записи останутся, но вносить работу в боте он больше не сможет.`)) return;
+    setError(null);
+    try {
+      await decideWorker(botId, 'remove');
+      setBotUsers((prev) => {
+        const next = new Map(prev);
+        next.delete(emp.id);
+        return next;
+      });
+    } catch (e) {
+      setError(friendlyBotError(e instanceof Error ? e.message : 'Не удалось снять с бота'));
+    }
   }
 
   async function loadAttendance(forDate: string) {
@@ -168,7 +191,10 @@ function TimesheetContent() {
                 className="flex items-center justify-between gap-2 card"
               >
                 <div className="min-w-0 flex-1">
-                  <span className="block truncate font-medium text-slate-800">{emp.name}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="truncate font-medium text-slate-800">{emp.name}</span>
+                    {botUsers.has(emp.id) && <span className="badge-success shrink-0">в боте</span>}
+                  </span>
                   <select
                     aria-label={`Профессия: ${emp.name}`}
                     className="mt-1 w-full max-w-[12rem] rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-600 disabled:opacity-50"
@@ -186,6 +212,11 @@ function TimesheetContent() {
                       <option value={emp.profession_id}>(скрытая профессия)</option>
                     )}
                   </select>
+                  {botUsers.has(emp.id) && (
+                    <button type="button" onClick={() => unlinkBot(emp)} className="btn-ghost-muted mt-1 block">
+                      Снять с бота
+                    </button>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <button

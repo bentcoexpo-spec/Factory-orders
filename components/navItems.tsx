@@ -256,6 +256,13 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['master'],
   },
   {
+    href: '/master/bot',
+    label: 'Бот',
+    shortLabel: 'Бот',
+    icon: IconUsers,
+    roles: ['master'],
+  },
+  {
     href: '/master/productivity',
     label: 'Продуктивность',
     shortLabel: 'Люди',
@@ -323,6 +330,14 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Каталог',
     shortLabel: 'Каталог',
     icon: IconBox,
+    roles: ['ceo'],
+    group: 'tsekh',
+  },
+  {
+    href: '/control/tsekh/bot',
+    label: 'Бот',
+    shortLabel: 'Бот',
+    icon: IconUsers,
     roles: ['ceo'],
     group: 'tsekh',
   },
