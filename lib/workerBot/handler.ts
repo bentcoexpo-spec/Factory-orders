@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { TelegramCallbackQuery, TelegramMessage, TelegramUpdate } from '@/lib/telegram';
-import { answerCallback, editMessage, inline, type InlineButton, type Markup, replyKeyboard, sendMessage } from './api';
+import { answerCallback, editMessage, inline, type InlineButton, type Markup, sendMessage } from './api';
 import {
   type BotCatalog,
   type CatalogModel,
@@ -17,6 +17,8 @@ import {
 } from './db';
 import { isLang, type Lang, type MessageKey, money, t, both } from './i18n';
 import { displayLabel, fmtDate, formatStats, type Period, rangeFor, tashkentToday } from './stats';
+import { notifyWorkerDecision, workerMenu } from './notify';
+import { onStaffCallback, onStaffText, showStaffMenu } from './staff';
 
 // Бот работников цеха (Этап 2): вход по ссылке с одобрением мастера,
 // «Добавить работу», «Моя статистика», исправление сегодняшних записей.
@@ -35,9 +37,7 @@ interface PrivateChat {
   type?: string;
 }
 
-function mainMenu(lang: Lang): Markup {
-  return replyKeyboard([[t(lang, 'menu.add'), t(lang, 'menu.stats')]]);
-}
+const mainMenu = (lang: Lang): Markup => workerMenu(lang);
 
 function langChooser(): InlineButton[][] {
   return [[{ text: t('ru', 'lang.ru'), callback_data: 'lang:ru' }, { text: t('uz', 'lang.uz'), callback_data: 'lang:uz' }]];
@@ -88,10 +88,7 @@ async function handleMessage(sb: SupabaseClient, msg: TelegramMessage) {
     }
 
     const staff = await getStaff(sb, tg);
-    if (staff) {
-      await sendMessage(chatId, t(staff.language, 's.hello', { role: t(staff.language, `role.${staff.role}`) }));
-      return;
-    }
+    if (staff) return await onStaffText(sb, staff, tg, chatId, text);
     await onWorkerText(sb, tg, chatId, text);
   } catch (err) {
     console.error('worker bot message error', err);
@@ -145,10 +142,7 @@ async function onLangCommand(sb: SupabaseClient, tg: number, chatId: number) {
 // «Домой»: что показать человеку, когда он просто написал боту.
 async function home(sb: SupabaseClient, tg: number, chatId: number) {
   const staff = await getStaff(sb, tg);
-  if (staff) {
-    await sendMessage(chatId, t(staff.language, 's.hello', { role: t(staff.language, `role.${staff.role}`) }));
-    return;
-  }
+  if (staff) return showStaffMenu(sb, tg, chatId, staff);
   const w = await getWorker(sb, tg);
   if (!w) return void (await sendMessage(chatId, both('w.noLink')));
   const lang = w.language;
@@ -559,14 +553,6 @@ export async function notifyRecipients(recipients: Recipient[], user: WorkerInfo
   }
 }
 
-// Сообщение работнику о решении мастера (из бота или с сайта).
-export async function notifyWorkerDecision(action: 'approve' | 'reject' | 'remove', worker: Pick<WorkerInfo, 'chat_id' | 'language'>) {
-  const lang: Lang = isLang(worker.language) ? worker.language : 'ru';
-  if (action === 'approve') await sendMessage(worker.chat_id, t(lang, 'w.approved'), mainMenu(lang));
-  else if (action === 'reject') await sendMessage(worker.chat_id, t(lang, 'w.rejectedNotice'), { kind: 'remove' });
-  else await sendMessage(worker.chat_id, t(lang, 'w.removedNotice'), { kind: 'remove' });
-}
-
 interface RequestInfo {
   user: WorkerInfo;
   employees: { id: string; name: string; profession_name: string | null }[];
@@ -591,7 +577,8 @@ async function handleStaffCallback(sb: SupabaseClient, cb: TelegramCallbackQuery
     await answerCallback(cb.id);
     await rpc<null>(sb, 'bot_staff_set_language', { p_tg: tg, p_lang: picked });
     await editMessage(chatId, messageId, t(picked, 'lang.changed'));
-    await sendMessage(chatId, t(picked, 's.hello', { role: t(picked, `role.${staff.role}`) }));
+    await sendMessage(chatId, t(picked, 'sm.hello', { role: t(picked, `role.${staff.role}`) }));
+    await showStaffMenu(sb, tg, chatId, { ...staff, language: picked });
     return;
   }
 
@@ -671,5 +658,6 @@ async function handleStaffCallback(sb: SupabaseClient, cb: TelegramCallbackQuery
     return;
   }
 
+  if (await onStaffCallback(sb, cb.id, staff, tg, chatId, messageId, data)) return;
   await answerCallback(cb.id);
 }

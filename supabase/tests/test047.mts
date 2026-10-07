@@ -127,7 +127,7 @@ const code = (await db.query(`select public.create_staff_link_code() as c`)).row
 await say(MASTER, `/start link_${code}`);
 check('мастер: «Telegram подключён» и выбор языка', since(0, MASTER)[0].text.includes('Telegram подключён') && since(0, MASTER).some((s) => s.buttons.includes('slang:uz')), JSON.stringify(sent.slice(0, 2)));
 await press(MASTER, 'slang:ru');
-check('мастер: после выбора языка — приветствие «подключены как мастер»', last(MASTER).text.includes('мастер'));
+check('мастер: после выбора языка — приветствие «подключены как мастер» и главное меню', sent.some((x) => x.chat === MASTER && x.text.includes('подключены как мастер')) && last(MASTER).reply.includes('📦 Изделия'));
 await say(STRANGER, '/start link_WRONGWRONG12');
 check('неверный код привязки: понятное сообщение на двух языках', last(STRANGER).text.includes('Код неверный') && last(STRANGER).text.includes('Kod'));
 await say(STRANGER, 'привет');
@@ -190,7 +190,7 @@ await say(W1, '0');
 check('нуль отклонён', last(W1).text.includes('1 dan 99999'));
 await say(W1, '10');
 const review = last(W1);
-check('сводка: 10 dona × 120 so\'m = 1.200 so\'m, кнопки подтверждения', review.text.includes('10 dona × 120 so\'m = <b>1.200 so\'m</b>') && review.buttons.includes('ok') && review.buttons.includes('no'), review.text);
+check('сводка: 10 dona × 120 so\'m = 1.200 so\'m, кнопки подтверждения', review.text.includes('10 dona × 120 so\'m = 💰 <b>1.200 so\'m</b>') && review.buttons.includes('ok') && review.buttons.includes('no'), review.text);
 m = mark();
 await press(W1, 'ok');
 const saved = last(W1);
@@ -301,7 +301,7 @@ check('новый сотрудник при этом не создан', (await 
 
 // ===================== 9. Мастер пишет боту, смена языка =====================
 await say(MASTER, 'что-нибудь');
-check('мастер на произвольный текст — подсказка', last(MASTER).text.includes('заявки работников'));
+check('мастер на произвольный текст — главное меню', last(MASTER).reply.includes('✅ Подтверждение') || last(MASTER).reply.some((x: string) => x.startsWith('✅ Подтверждение')));
 await say(W1, '/lang');
 check('/lang показывает выбор языка', last(W1).buttons.includes('lang:ru'));
 await press(W1, 'lang:ru');

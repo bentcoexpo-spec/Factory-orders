@@ -334,6 +334,14 @@ export const NAV_ITEMS: NavItem[] = [
     group: 'tsekh',
   },
   {
+    href: '/control/tsekh/journal',
+    label: 'Журнал правок',
+    shortLabel: 'Журнал',
+    icon: IconHistory,
+    roles: ['ceo'],
+    group: 'tsekh',
+  },
+  {
     href: '/control/tsekh/bot',
     label: 'Бот',
     shortLabel: 'Бот',

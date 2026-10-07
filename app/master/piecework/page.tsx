@@ -8,6 +8,8 @@ import { formatDateOnly, todayDate } from '@/lib/dates';
 import { friendlyPieceworkError } from '@/lib/errors';
 import RequireRole from '@/components/RequireRole';
 import CatalogPicker from '@/components/CatalogPicker';
+import PendingRecords from '@/components/PendingRecords';
+import { callStaff } from '@/lib/staffApi';
 import { CatalogData, loadCatalog } from '@/lib/catalog';
 import { Target, describeTarget, targetKey } from '@/lib/catalogTarget';
 import Link from 'next/link';
@@ -308,18 +310,20 @@ function PieceworkContent() {
     }
     setEditBusy(true);
     setError(null);
-    const { error: updateError } = await supabase
-      .from('work_records')
-      .update({
-        catalog_operation_id: editTarget.kind === 'op' ? editTarget.id : null,
-        model_id: editTarget.kind === 'whole' ? editTarget.modelId : null,
+    let failure: string | null = null;
+    try {
+      await callStaff('staff_edit_record', {
+        id: r.id,
         quantity: qty,
+        ...(targetChanged ? (editTarget.kind === 'op' ? { catalog_operation_id: editTarget.id, model_id: null } : { catalog_operation_id: null, model_id: editTarget.modelId }) : {}),
         batch_id: editBatch?.id ?? null,
-      })
-      .eq('id', r.id);
+      });
+    } catch (e) {
+      failure = e instanceof Error ? e.message : 'Не удалось сохранить';
+    }
     setEditBusy(false);
-    if (updateError) {
-      setError(friendlyPieceworkError(updateError.message));
+    if (failure) {
+      setError(failure);
       return;
     }
     setEditId(null);
@@ -335,9 +339,10 @@ function PieceworkContent() {
       return;
     }
     setError(null);
-    const { error: deleteError } = await supabase.from('work_records').delete().eq('id', r.id);
-    if (deleteError) {
-      setError(friendlyPieceworkError(deleteError.message));
+    try {
+      await callStaff('staff_delete_record', { id: r.id });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось удалить');
       return;
     }
     if (editId === r.id) setEditId(null);
@@ -363,6 +368,8 @@ function PieceworkContent() {
         <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Сделка</h1>
         <p className="mt-1 text-sm text-slate-500">Журнал сдельной работы цеха</p>
       </div>
+
+      <PendingRecords onChanged={() => loadRecords(date)} />
 
       {error && <p className="text-sm text-danger-600">{error}</p>}
       {success && <p className="text-sm font-medium text-success-600">{success}</p>}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { notifyWorkerDecision } from '@/lib/workerBot/handler';
+import { notifyWorkerDecision } from '@/lib/workerBot/notify';
 
 export const dynamic = 'force-dynamic';
 
