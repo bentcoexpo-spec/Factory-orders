@@ -359,7 +359,21 @@ async function onStats(sb: SupabaseClient, tg: number, chatId: number, messageId
     prev,
     lang
   );
-  await editMessage(chatId, messageId, text, statsButtons(lang, period === 'd'));
+  let extra = '';
+  if (period === 'w' || period === 'm') {
+    // 🏅 Рейтинг внутри профессии — только если включён мастером; без имён и сумм других.
+    try {
+      const rating = await rpc<{ place: number; total: number; profession_name: string } | null>(sb, 'bot_rating', {
+        p_tg: tg,
+        p_from: range.from,
+        p_to: range.to,
+      });
+      if (rating) extra = `\n\n${t(lang, 'rate.line', { profession: rating.profession_name, place: rating.place, total: rating.total })}`;
+    } catch (err) {
+      console.error('worker bot rating failed', err);
+    }
+  }
+  await editMessage(chatId, messageId, `${text}${extra}`, statsButtons(lang, period === 'd'));
 }
 
 // ====================================================================

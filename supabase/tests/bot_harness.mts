@@ -81,10 +81,19 @@ export async function createHarness() {
   };
 
   const sent: Sent[] = [];
+  const docs: { chat: number; filename: string; caption: string; data: Uint8Array }[] = [];
+  const flags = { failDocuments: false };
   process.env.TELEGRAM_WORKER_BOT_TOKEN = 'test-token';
   process.env.TELEGRAM_WORKER_BOT_USERNAME = 'workers_bot';
   (globalThis as any).fetch = async (url: string, init: any) => {
     const method = String(url).split('/').pop() as string;
+    if (init.body instanceof FormData) {
+      const f = init.body as FormData;
+      if (flags.failDocuments) return { ok: false, text: async () => 'failed' };
+      const file = f.get('document') as File;
+      docs.push({ chat: Number(f.get('chat_id')), filename: file.name, caption: String(f.get('caption') ?? ''), data: new Uint8Array(await file.arrayBuffer()) });
+      return { ok: true, text: async () => '' };
+    }
     const body = JSON.parse(init.body);
     const rm = body.reply_markup ?? {};
     const rows: any[][] = rm.inline_keyboard ?? [];
@@ -125,5 +134,5 @@ export async function createHarness() {
     process.exit(failed > 0 ? 1 : 0);
   };
 
-  return { db, UIDS, asUser, say, press, sent, texts, last, mark, since, check, finish };
+  return { db, UIDS, asUser, say, press, sent, docs, flags, fakeSb, texts, last, mark, since, check, finish };
 }

@@ -1,10 +1,20 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { answerCallback, editMessage, inline, replyKeyboard, sendMessage, type InlineButton } from './api';
+import { answerCallback, editMessage, inline, replyKeyboard, sendDocument, sendMessage, type InlineButton } from './api';
 import { clearState, getState, isDbError, rpc, setState, type StaffInfo } from './db';
-import { type Lang, type MessageKey, money, t } from './i18n';
+import { type Lang, type MessageKey, esc, money, t } from './i18n';
 import { parseCatalogList, type ParseResult } from './catalogParse';
 import { notifyWorkerDecision, notifyWorkerRecord, type NotifyTarget, type RecordChange } from './notify';
-import { fmtDate, displayLabel } from './stats';
+import {
+  displayLabel,
+  type ExcelPeriod,
+  fmtDate,
+  formatPersonGroups,
+  type PersonGroup,
+  periodLabel,
+  periodRange,
+  type ReportPeriod,
+  tashkentToday,
+} from './stats';
 
 // Мастер и CEO в боте: ✅ Подтверждение, 👷 Работники, 📦 Изделия.
 // 📊 Отчёты и ⚙️ Настройки — в следующей части (3б).
@@ -57,6 +67,10 @@ function errKey(err: unknown): MessageKey | null {
   if (isDbError(err, 'invalid_quantity')) return 'add.badQty';
   if (isDbError(err, 'invalid_reason')) return 'c.badReason';
   if (isDbError(err, 'insufficient_privilege')) return 'e.denied';
+  if (isDbError(err, 'broadcast_limit')) return 'g.bcastLimit';
+  if (isDbError(err, 'invalid_text')) return 'g.bcastBad';
+  if (isDbError(err, 'invalid_time')) return 'g.badTime';
+  if (isDbError(err, 'profession_not_found')) return 'k.notFound';
   return null;
 }
 
@@ -130,9 +144,10 @@ export async function onStaffText(sb: SupabaseClient, staff: StaffInfo, tg: numb
   const action = menuAction(text);
   if (action) {
     await clearState(sb, tg);
-    if (action === 'reports' || action === 'settings') return void (await say(c, t(c.lang, 'sm.soon')));
     if (!staff.shop) return void (await say(c, t(c.lang, 'sm.noShop')));
     try {
+      if (action === 'reports') return await showReportPick(c);
+      if (action === 'settings') return await showSettings(c);
       if (action === 'confirm') return await showConfirm(c);
       if (action === 'workers') return await showWorkers(c);
       return await showCatalog(c);
@@ -179,6 +194,14 @@ async function onStaffInput(c: Ctx, state: string, d: Record<string, unknown>, t
       return renameOpDo(c, s('id'), s('modelId'), text);
     case 'k_list':
       return listPreview(c, s('profId'), s('modelId') || null, text);
+    case 'g_prof_add':
+      return profAddDo(c, text);
+    case 'g_prof_rename':
+      return profRenameDo(c, s('id'), text);
+    case 'g_time':
+      return timeDo(c, text);
+    case 'g_bcast':
+      return bcastPreview(c, text);
     default:
       return showStaffMenu(c.sb, c.tg, c.chatId, c.staff);
   }
@@ -205,6 +228,8 @@ export async function onStaffCallback(
     'x', 'sh', 'cb', 'cd', 'ca', 'cw', 'cv', 'cr', 'cc', 'cq', 'cx',
     'ul', 'uc', 'un', 'us', 'ur', 'uq', 'ud', 'udy', 'up', 'upi', 'ux', 'uxy', 'ua', 'ui', 'uin',
     'kp', 'km', 'ko', 'ka', 'kb', 'kbm', 'kbs', 'kao', 'kw', 'kr', 'kd', 'kdy', 'kor', 'kop', 'kod', 'kody', 'k0',
+    'r0', 'rp', 'rt', 'rw', 'rx', 'rxs', 'rxp',
+    'g0', 'gp', 'gpn', 'gpa', 'gpr', 'gpd', 'gpdy', 'gr', 'grt', 'grm', 'grs', 'grx', 'grd', 'gm', 'gmt', 'gk', 'gkt', 'gb', 'gbs',
   ];
   if (!known.includes(cmd)) return false;
   await answerCallback(cbId);
@@ -275,6 +300,34 @@ export async function onStaffCallback(
       case 'kop': await opRateAsk(c, a); return true;
       case 'kod': await opDeleteAsk(c, a); return true;
       case 'kody': await opDeleteDo(c, a); return true;
+      // --- 📊 Отчёты
+      case 'r0': await showReportPick(c); return true;
+      case 'rp': await showReport(c, a as ReportPeriod); return true;
+      case 'rt': await showTable(c, a as ReportPeriod, Number(b) || 0); return true;
+      case 'rw': await showPerson(c, a); return true;
+      case 'rx': await excelScope(c); return true;
+      case 'rxs': await excelPeriod(c, a); return true;
+      case 'rxp': await excelRun(c, a as ExcelPeriod); return true;
+      // --- ⚙️ Настройки
+      case 'g0': await showSettings(c); return true;
+      case 'gp': await showProfList(c); return true;
+      case 'gpn': await showProfCard(c, a); return true;
+      case 'gpa': await profAddAsk(c); return true;
+      case 'gpr': await profRenameAsk(c, a); return true;
+      case 'gpd': await profDeleteAsk(c, a); return true;
+      case 'gpdy': await profDeleteDo(c, a); return true;
+      case 'gr': await showReminder(c); return true;
+      case 'grt': await reminderToggle(c); return true;
+      case 'grm': await timePick(c); return true;
+      case 'grs': await timeSet(c, a); return true;
+      case 'grx': await timeAsk(c); return true;
+      case 'grd': await dayToggle(c, Number(a)); return true;
+      case 'gm': await showMonthly(c); return true;
+      case 'gmt': await monthlyToggle(c); return true;
+      case 'gk': await showRating(c); return true;
+      case 'gkt': await ratingToggle(c); return true;
+      case 'gb': await bcastAsk(c); return true;
+      case 'gbs': await bcastSend(c); return true;
       default:
         return true;
     }
@@ -1023,3 +1076,399 @@ async function listApply(c: Ctx) {
   await out(c, t(c.lang, 'k.listSaved', { newModels: res.new_models, newOps: res.new_ops }), [SMALL_BACK(c, modelId ? `km:${modelId}` : `kp:${profId}`)]);
 }
 
+
+
+// ====================================================================
+// 📊 Отчёты
+// ====================================================================
+interface Report {
+  from: string;
+  to: string;
+  total: { sum: number; qty: number; records: number; workers: number; employees: number };
+  pending: { count: number; sum: number };
+  professions: { id: string | null; name: string | null; employees: number; workers: number; sum: number; qty: number; records: number }[];
+  workers: { id: string; name: string; profession_name: string | null; sum: number; qty: number; records: number }[];
+  idle: { id: string; name: string }[];
+}
+
+const PERIOD_KEY: Record<ReportPeriod, MessageKey> = { d: 'r.today', w: 'r.week', m: 'r.month', y: 'r.year' };
+
+async function showReportPick(c: Ctx) {
+  await out(c, t(c.lang, 'r.pick', { shop: shopLabel(c) }), [
+    [BTN(t(c.lang, 'r.today'), 'rp:d'), BTN(t(c.lang, 'r.week'), 'rp:w')],
+    [BTN(t(c.lang, 'r.month'), 'rp:m'), BTN(t(c.lang, 'r.year'), 'rp:y')],
+    [BTN(t(c.lang, 'r.btnExcel'), 'rx')],
+  ]);
+}
+
+async function loadReport(c: Ctx, period: ReportPeriod): Promise<Report> {
+  const { from, to } = periodRange(period, tashkentToday());
+  await setState(c.sb, c.tg, 'r_ctx', { period });
+  return sdo<Report>(c, 'staff_report', { from, to });
+}
+
+async function showReport(c: Ctx, period: ReportPeriod) {
+  if (!(period in PERIOD_KEY)) return showReportPick(c);
+  const rep = await loadReport(c, period);
+  const lines: string[] = [t(c.lang, 'r.title', { period: periodLabel(c.lang, rep.from, rep.to), shop: shopLabel(c) }), ''];
+  const money0 = (n: number) => money(Number(n), c.lang);
+  if (rep.total.records === 0) {
+    lines.push(t(c.lang, 'r.empty'));
+  } else {
+    for (const p of rep.professions.filter((x) => Number(x.records) > 0)) {
+      lines.push(
+        t(c.lang, 'r.profLine', {
+          name: p.name ?? t(c.lang, 'r.noProf').replace(/^⚠️\s*/, ''),
+          sum: money0(p.sum),
+          workers: p.workers,
+          employees: p.employees,
+          qty: Number(p.qty),
+          records: Number(p.records),
+        }),
+        ''
+      );
+    }
+    lines.push(
+      t(c.lang, 'r.total', {
+        sum: money0(rep.total.sum),
+        workers: rep.total.workers,
+        employees: rep.total.employees,
+        qty: Number(rep.total.qty),
+        records: Number(rep.total.records),
+      })
+    );
+  }
+  if (rep.pending.count > 0) lines.push('', t(c.lang, 'r.pending', { count: rep.pending.count, sum: money0(rep.pending.sum) }));
+  if (rep.idle.length === 0) lines.push('', t(c.lang, 'r.idleNone'));
+  else {
+    const shown = rep.idle.slice(0, 25).map((x) => x.name).join(', ');
+    const more = rep.idle.length > 25 ? t(c.lang, 'r.idleMore', { n: rep.idle.length - 25 }) : '';
+    lines.push('', `${t(c.lang, 'r.idle', { n: rep.idle.length, names: shown })}${more}`);
+  }
+  let text = lines.join('\n');
+  if (text.length > 3900) text = `${text.slice(0, text.lastIndexOf('\n', 3880))}\n…`;
+  await out(c, text, [
+    [BTN(t(c.lang, 'r.btnTable'), `rt:${period}:0`), BTN(t(c.lang, 'r.btnExcel'), 'rx')],
+    [BTN(t(c.lang, 'btn.back'), 'r0')],
+  ]);
+}
+
+const PAGE = 15;
+
+async function showTable(c: Ctx, period: ReportPeriod, page: number) {
+  if (!(period in PERIOD_KEY)) return showReportPick(c);
+  const rep = await loadReport(c, period);
+  const head = t(c.lang, 'r.tableTitle', { period: periodLabel(c.lang, rep.from, rep.to) });
+  if (rep.workers.length === 0) return out(c, `${head}\n\n${t(c.lang, 'r.tableEmpty')}`, [[BTN(t(c.lang, 'btn.back'), `rp:${period}`)]]);
+  const pages = Math.ceil(rep.workers.length / PAGE);
+  const pg = Math.min(Math.max(page, 0), pages - 1);
+  const slice = rep.workers.slice(pg * PAGE, pg * PAGE + PAGE);
+  const rowsText = slice
+    .map((w, i) => {
+      const n = String(pg * PAGE + i + 1).padStart(2);
+      const name = (w.name.length > 16 ? `${w.name.slice(0, 15)}…` : w.name).padEnd(16);
+      const sum = money(Number(w.sum), c.lang).replace(/\s*\S+$/, '').padStart(11);
+      return `${n} ${esc(name)} ${sum} ${String(Number(w.qty)).padStart(5)}`;
+    })
+    .join('\n');
+  const text = `${head}\n<pre>${rowsText}</pre>${pages > 1 ? `\n${pg + 1}/${pages}` : ''}`;
+  const rows: InlineButton[][] = [];
+  const nums = slice.map((w, i) => BTN(String(pg * PAGE + i + 1), `rw:${w.id}`));
+  for (let i = 0; i < nums.length; i += 5) rows.push(nums.slice(i, i + 5));
+  const nav: InlineButton[] = [];
+  if (pg > 0) nav.push(BTN(t(c.lang, 'r.prev'), `rt:${period}:${pg - 1}`));
+  if (pg < pages - 1) nav.push(BTN(t(c.lang, 'r.next'), `rt:${period}:${pg + 1}`));
+  if (nav.length > 0) rows.push(nav);
+  rows.push([BTN(t(c.lang, 'btn.back'), `rp:${period}`)]);
+  await out(c, text, rows);
+}
+
+async function showPerson(c: Ctx, empId: string) {
+  const st = await getState(c.sb, c.tg);
+  const saved = st?.state === 'r_ctx' ? String(st.data.period) : 'm';
+  const period = (saved in PERIOD_KEY ? saved : 'm') as ReportPeriod;
+  const { from, to } = periodRange(period, tashkentToday());
+  const r = await sdo<{ name: string; profession_name: string | null; days: number; groups: PersonGroup[] }>(c, 'staff_report_person', {
+    employee_id: empId,
+    from,
+    to,
+  });
+  const head = t(c.lang, 'r.person', {
+    name: r.name,
+    profession: r.profession_name ?? t(c.lang, 'u.professionNone'),
+    period: periodLabel(c.lang, from, to),
+    days: Number(r.days),
+  });
+  await out(c, `${head}\n\n${formatPersonGroups(r.groups, c.lang)}`, [
+    [BTN(t(c.lang, 'u.btnRecords'), `us:${empId}`), BTN(t(c.lang, 'btn.back'), `rt:${period}:0`)],
+  ]);
+}
+
+// --- 📥 Excel
+async function excelScope(c: Ctx) {
+  const w = await sdo<{ total: number; none: number; professions: { id: string; name: string; count: number }[] }>(c, 'staff_workers', {});
+  const rows: InlineButton[][] = [[BTN(t(c.lang, 'x.scopeAll'), 'rxs:all')]];
+  w.professions.filter((p) => p.count > 0).forEach((p) => rows.push([BTN(`👷 ${p.name}`, `rxs:${p.id}`)]));
+  if (w.none > 0) rows.push([BTN(t(c.lang, 'u.noneBtn'), 'rxs:none')]);
+  rows.push([BTN(t(c.lang, 'btn.back'), 'r0')]);
+  await out(c, t(c.lang, 'x.pickScope', { shop: shopLabel(c) }), rows);
+}
+
+async function scopeName(c: Ctx, scope: string): Promise<string> {
+  if (scope === 'all') return t(c.lang, 'x.scopeAll');
+  if (scope === 'none') return t(c.lang, 'u.noneBtn');
+  const w = await sdo<{ professions: { id: string; name: string }[] }>(c, 'staff_workers', {});
+  return `👷 ${w.professions.find((p) => p.id === scope)?.name ?? ''}`;
+}
+
+async function excelPeriod(c: Ctx, scope: string) {
+  await setState(c.sb, c.tg, 'x_ctx', { scope });
+  const name = await scopeName(c, scope);
+  await out(c, t(c.lang, 'x.pickPeriod', { scope: name }), [
+    [BTN(t(c.lang, 'x.cw'), 'rxp:cw'), BTN(t(c.lang, 'x.pw'), 'rxp:pw')],
+    [BTN(t(c.lang, 'x.m'), 'rxp:m'), BTN(t(c.lang, 'x.pm'), 'rxp:pm')],
+    [BTN(t(c.lang, 'x.y'), 'rxp:y')],
+    [BTN(t(c.lang, 'btn.back'), 'rx')],
+  ]);
+}
+
+async function excelRun(c: Ctx, period: ExcelPeriod) {
+  const st = await getState(c.sb, c.tg);
+  if (st?.state !== 'x_ctx') return void (await say(c, t(c.lang, 'err.stale')));
+  const scope = String(st.data.scope);
+  const { from, to } = periodRange(period, tashkentToday());
+  await out(c, t(c.lang, 'x.preparing'));
+  const res = await sdo<{ rows: import('./excel').ReportRow[]; count: number; truncated: boolean }>(c, 'staff_report_rows', {
+    from,
+    to,
+    profession_id: scope === 'all' ? null : scope,
+  });
+  if (res.rows.length === 0) return out(c, t(c.lang, 'x.empty'), [[BTN(t(c.lang, 'btn.back'), 'rx')]]);
+
+  const { buildReportWorkbook } = await import('./excel');
+  const data = await buildReportWorkbook(res.rows, c.lang);
+  const total = res.rows.reduce((s, r) => s + Number(r.total), 0);
+  const name = (await scopeName(c, scope)).replace(/^[^\p{L}]+/u, '');
+  const ok = await sendDocument(
+    c.chatId,
+    `report_${c.staff.shop}_${from}_${to}${scope === 'all' ? '' : `_${scope === 'none' ? 'noprof' : 'prof'}`}.xlsx`,
+    data,
+    t(c.lang, 'x.caption', { shop: shopLabel(c), scope: name, period: periodLabel(c.lang, from, to), sum: money(total, c.lang), n: res.rows.length })
+  );
+  const note = res.truncated ? `\n${t(c.lang, 'x.truncated')}` : '';
+  await out(c, `${t(c.lang, ok ? 'x.sent' : 'x.failed')}${note}`, [[BTN(t(c.lang, 'btn.back'), 'rx')]]);
+}
+
+// ====================================================================
+// ⚙️ Настройки
+// ====================================================================
+interface Settings {
+  reminder_enabled: boolean;
+  reminder_time: string;
+  days_off: number[];
+  rating_enabled: boolean;
+  monthly_excel_enabled: boolean;
+}
+
+const stateText = (c: Ctx, on: boolean) => t(c.lang, on ? 'g.on' : 'g.off');
+
+async function getSettings(c: Ctx): Promise<Settings> {
+  return sdo<Settings>(c, 'staff_settings_get', {});
+}
+async function setSettings(c: Ctx, patch: Record<string, unknown>): Promise<Settings> {
+  return sdo<Settings>(c, 'staff_settings_set', patch);
+}
+
+async function showSettings(c: Ctx) {
+  const s = await getSettings(c);
+  await out(c, t(c.lang, 'g.title', { shop: shopLabel(c) }), [
+    [BTN(t(c.lang, 'g.prof'), 'gp')],
+    [BTN(t(c.lang, 'g.remind', { state: stateText(c, s.reminder_enabled) }), 'gr')],
+    [BTN(t(c.lang, 'g.monthly', { state: stateText(c, s.monthly_excel_enabled) }), 'gm')],
+    [BTN(t(c.lang, 'g.rating', { state: stateText(c, s.rating_enabled) }), 'gk')],
+    [BTN(t(c.lang, 'g.bcast'), 'gb')],
+  ]);
+}
+
+// --- 👷 Профессии
+interface ProfInfo {
+  id: string;
+  name: string;
+  employees: number;
+  models: number;
+}
+async function showProfList(c: Ctx) {
+  const list = await sdo<ProfInfo[]>(c, 'staff_professions', {});
+  const rows = list.slice(0, 60).map((p) => [BTN(t(c.lang, 'g.profBtn', { name: p.name, n: p.employees }), `gpn:${p.id}`)]);
+  rows.push([BTN(t(c.lang, 'g.profAdd'), 'gpa')]);
+  rows.push([BTN(t(c.lang, 'btn.back'), 'g0')]);
+  await out(c, t(c.lang, 'g.profTitle'), rows);
+}
+async function findProf(c: Ctx, id: string): Promise<ProfInfo | null> {
+  return (await sdo<ProfInfo[]>(c, 'staff_professions', {})).find((p) => p.id === id) ?? null;
+}
+async function showProfCard(c: Ctx, id: string) {
+  const p = await findProf(c, id);
+  if (!p) return showProfList(c);
+  await out(c, t(c.lang, 'g.profCard', { name: p.name, employees: p.employees, models: p.models }), [
+    [BTN(t(c.lang, 'k.btnRename'), `gpr:${id}`), BTN(t(c.lang, 'k.btnDelete'), `gpd:${id}`)],
+    [BTN(t(c.lang, 'btn.back'), 'gp')],
+  ]);
+}
+async function profAddAsk(c: Ctx) {
+  await setState(c.sb, c.tg, 'g_prof_add', {});
+  await out(c, t(c.lang, 'g.askProfName'), [CANCEL(c.lang)]);
+}
+async function profAddDo(c: Ctx, text: string) {
+  await sdo(c, 'staff_catalog_set', { action: 'add_profession', name: text });
+  await clearState(c.sb, c.tg);
+  await say(c, t(c.lang, 'g.saved'));
+  await showProfList({ ...c, mid: undefined });
+}
+async function profRenameAsk(c: Ctx, id: string) {
+  const p = await findProf(c, id);
+  if (!p) return showProfList(c);
+  await setState(c.sb, c.tg, 'g_prof_rename', { id });
+  await out(c, t(c.lang, 'g.askProfRename', { name: p.name }), [CANCEL(c.lang)]);
+}
+async function profRenameDo(c: Ctx, id: string, text: string) {
+  await sdo(c, 'staff_catalog_set', { action: 'rename_profession', id, name: text });
+  await clearState(c.sb, c.tg);
+  await say(c, t(c.lang, 'g.saved'));
+  await showProfList({ ...c, mid: undefined });
+}
+async function profDeleteAsk(c: Ctx, id: string) {
+  const p = await findProf(c, id);
+  if (!p) return showProfList(c);
+  await out(c, t(c.lang, 'g.profDeleteAsk', { name: p.name, employees: p.employees }), [
+    [BTN(t(c.lang, 'edit.yesDel'), `gpdy:${id}`), BTN(t(c.lang, 'edit.no'), `gpn:${id}`)],
+  ]);
+}
+async function profDeleteDo(c: Ctx, id: string) {
+  const res = await sdo<{ result: string }>(c, 'staff_catalog_set', { action: 'delete_profession', id });
+  await out(c, t(c.lang, res.result === 'archived' ? 'g.profArchived' : 'g.profDeleted'), [[BTN(t(c.lang, 'btn.back'), 'gp')]]);
+}
+
+// --- 🔔 Напоминание
+const hhmm = (s: string) => s.slice(0, 5);
+
+async function showReminder(c: Ctx) {
+  const s = await getSettings(c);
+  const days = s.days_off.length === 0 ? t(c.lang, 'g.daysNone') : s.days_off.map((d) => t(c.lang, `day.${d}` as MessageKey)).join(', ');
+  const dayRow = [1, 2, 3, 4, 5, 6, 7].map((d) =>
+    BTN(t(c.lang, s.days_off.includes(d) ? 'g.dayOff' : 'g.dayWork', { d: t(c.lang, `day.${d}` as MessageKey) }), `grd:${d}`)
+  );
+  await out(
+    c,
+    t(c.lang, 'g.remindTitle', { shop: shopLabel(c), state: stateText(c, s.reminder_enabled), time: hhmm(s.reminder_time), days }),
+    [
+      [BTN(`🔔 ${t(c.lang, s.reminder_enabled ? 'g.turnOff' : 'g.turnOn')}`, 'grt'), BTN(t(c.lang, 'g.btnTime', { time: hhmm(s.reminder_time) }), 'grm')],
+      dayRow.slice(0, 4),
+      dayRow.slice(4),
+      [BTN(t(c.lang, 'btn.back'), 'g0')],
+    ]
+  );
+}
+async function reminderToggle(c: Ctx) {
+  const s = await getSettings(c);
+  await setSettings(c, { reminder_enabled: !s.reminder_enabled });
+  await showReminder(c);
+}
+async function timePick(c: Ctx) {
+  const hours = ['17:00', '18:00', '19:00', '20:00', '21:00', '22:00'];
+  await out(c, t(c.lang, 'g.timePick'), [
+    hours.slice(0, 3).map((h) => BTN(h, `grs:${h.replace(':', '')}`)),
+    hours.slice(3).map((h) => BTN(h, `grs:${h.replace(':', '')}`)),
+    [BTN(t(c.lang, 'g.timeOther'), 'grx')],
+    [BTN(t(c.lang, 'btn.back'), 'gr')],
+  ]);
+}
+async function timeSet(c: Ctx, compact: string) {
+  if (!/^\d{4}$/.test(compact)) return showReminder(c);
+  await setSettings(c, { reminder_time: `${compact.slice(0, 2)}:${compact.slice(2)}` });
+  await showReminder(c);
+}
+async function timeAsk(c: Ctx) {
+  await setState(c.sb, c.tg, 'g_time', {});
+  await out(c, t(c.lang, 'g.askTime'), [CANCEL(c.lang)]);
+}
+async function timeDo(c: Ctx, text: string) {
+  const m = /^\s*([01]?\d|2[0-3])[:.]([0-5]\d)\s*$/.exec(text);
+  if (!m) return void (await say(c, t(c.lang, 'g.badTime')));
+  const time = `${m[1].padStart(2, '0')}:${m[2]}`;
+  await setSettings(c, { reminder_time: time });
+  await clearState(c.sb, c.tg);
+  await say(c, t(c.lang, 'g.timeSaved', { time }));
+  await showReminder({ ...c, mid: undefined });
+}
+async function dayToggle(c: Ctx, day: number) {
+  if (!(day >= 1 && day <= 7)) return showReminder(c);
+  const s = await getSettings(c);
+  const next = s.days_off.includes(day) ? s.days_off.filter((d) => d !== day) : [...s.days_off, day];
+  await setSettings(c, { days_off: next });
+  await showReminder(c);
+}
+
+// --- 📥 Ежемесячный Excel и 🏅 Рейтинг
+async function showMonthly(c: Ctx) {
+  const s = await getSettings(c);
+  await out(c, t(c.lang, 'g.monthlyTitle', { shop: shopLabel(c), state: stateText(c, s.monthly_excel_enabled) }), [
+    [BTN(`📥 ${t(c.lang, s.monthly_excel_enabled ? 'g.turnOff' : 'g.turnOn')}`, 'gmt')],
+    [BTN(t(c.lang, 'btn.back'), 'g0')],
+  ]);
+}
+async function monthlyToggle(c: Ctx) {
+  const s = await getSettings(c);
+  await setSettings(c, { monthly_excel_enabled: !s.monthly_excel_enabled });
+  await showMonthly(c);
+}
+async function showRating(c: Ctx) {
+  const s = await getSettings(c);
+  await out(c, t(c.lang, 'g.ratingTitle', { shop: shopLabel(c), state: stateText(c, s.rating_enabled) }), [
+    [BTN(`🏅 ${t(c.lang, s.rating_enabled ? 'g.turnOff' : 'g.turnOn')}`, 'gkt')],
+    [BTN(t(c.lang, 'btn.back'), 'g0')],
+  ]);
+}
+async function ratingToggle(c: Ctx) {
+  const s = await getSettings(c);
+  await setSettings(c, { rating_enabled: !s.rating_enabled });
+  await showRating(c);
+}
+
+// --- 📣 Сообщение всем работникам цеха (не больше 3 в день)
+async function bcastAsk(c: Ctx) {
+  const p = await sdo<{ left: number; recipients: number }>(c, 'staff_broadcast_prepare', {});
+  if (p.recipients === 0) return out(c, t(c.lang, 'g.bcastNone'), [[BTN(t(c.lang, 'btn.back'), 'g0')]]);
+  if (p.left <= 0) return out(c, t(c.lang, 'g.bcastLimit'), [[BTN(t(c.lang, 'btn.back'), 'g0')]]);
+  await setState(c.sb, c.tg, 'g_bcast', {});
+  await out(c, t(c.lang, 'g.askBcast', { shop: shopLabel(c), n: p.recipients, left: p.left }), [CANCEL(c.lang)]);
+}
+async function bcastPreview(c: Ctx, text: string) {
+  const body = text.trim();
+  if (body.length < 1 || body.length > 1000) return void (await say(c, t(c.lang, 'g.bcastBad')));
+  const p = await sdo<{ left: number; recipients: number }>(c, 'staff_broadcast_prepare', {});
+  if (p.left <= 0) return void (await say(c, t(c.lang, 'g.bcastLimit')));
+  await setState(c.sb, c.tg, 'g_bcast_ok', { text: body });
+  await say(c, t(c.lang, 'g.bcastPreview', { text: body, n: p.recipients, left: p.left - 1 }), [
+    [BTN(t(c.lang, 'g.bcastSend'), 'gbs'), ...CANCEL(c.lang)],
+  ]);
+}
+async function bcastSend(c: Ctx) {
+  const st = await getState(c.sb, c.tg);
+  if (st?.state !== 'g_bcast_ok') return void (await out(c, t(c.lang, 'err.stale')));
+  const text = String(st.data.text);
+  const res = await sdo<{ id: string; recipients: { chat_id: number; language: Lang | null }[] }>(c, 'staff_broadcast_commit', { text });
+  await clearState(c.sb, c.tg);
+  await out(c, t(c.lang, 'g.saved'));
+  let sent = 0;
+  let failed = 0;
+  for (const r of res.recipients) {
+    const lang: Lang = r.language === 'uz' ? 'uz' : 'ru';
+    const ok = await sendMessage(r.chat_id, t(lang, 'bc.header', { text }));
+    if (ok) sent += 1;
+    else failed += 1;
+    await new Promise((resolve) => setTimeout(resolve, 40)); // не чаще ~25 сообщений в секунду
+  }
+  await rpc<null>(c.sb, 'bot_broadcast_result', { p_id: res.id, p_sent: sent, p_failed: failed });
+  await sendMessage(c.chatId, t(c.lang, 'g.bcastDone', { sent, failed }), await staffKeyboard(c));
+}

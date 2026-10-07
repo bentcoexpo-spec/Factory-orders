@@ -67,3 +67,29 @@ export function editMessage(chatId: number, messageId: number, text: string, but
 export function answerCallback(callbackQueryId: string, text?: string): Promise<boolean> {
   return call('answerCallbackQuery', { callback_query_id: callbackQueryId, text });
 }
+
+// Отправка файла (Excel) документом. data — содержимое файла.
+export async function sendDocument(chatId: number, filename: string, data: Uint8Array, caption?: string): Promise<boolean> {
+  try {
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    if (caption) {
+      form.append('caption', caption);
+      form.append('parse_mode', 'HTML');
+    }
+    form.append(
+      'document',
+      new Blob([new Uint8Array(data)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+      filename
+    );
+    const res = await fetch(`${TELEGRAM_API}/bot${token()}/sendDocument`, { method: 'POST', body: form });
+    if (!res.ok) {
+      console.error('worker bot sendDocument failed', await res.text());
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('worker bot sendDocument threw', err);
+    return false;
+  }
+}

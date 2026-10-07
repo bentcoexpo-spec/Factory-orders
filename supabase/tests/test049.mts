@@ -44,9 +44,9 @@ await say(MASTER, '/start');
 const menu = last(MASTER);
 check('меню мастера: 4 кнопки + ✅ Подтверждение со счётчиком (4 ожидающих своего цеха)', menu.reply.join('|') === '📦 Изделия|👷 Работники|📊 Отчёты|⚙️ Настройки|✅ Подтверждение (4)', menu.reply.join('|'));
 await say(MASTER, '📊 Отчёты');
-check('«Отчёты» пока — «появится в следующем обновлении»', last(MASTER).text.includes('следующем обновлении'));
+check('«Отчёты» открываются: выбор периода', last(MASTER).text.includes('Выберите период') && last(MASTER).buttons.includes('rp:d'));
 await say(MASTER, '⚙️ Настройки');
-check('«Настройки» пока — то же', last(MASTER).text.includes('следующем обновлении'));
+check('«Настройки» открываются', last(MASTER).text.includes('Настройки') && last(MASTER).buttons.includes('gp'));
 
 // ===================== ✅ Подтверждение =====================
 await say(MASTER, '✅ Подтверждение (4)');

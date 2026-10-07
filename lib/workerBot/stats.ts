@@ -135,3 +135,89 @@ export function formatStats(period: Period, range: Range, recs: WorkRec[], prevR
   if (text.length > 3900) text = `${text.slice(0, text.lastIndexOf('\n', 3880))}\n…`;
   return text;
 }
+
+// ---------------------------------------------------------------------
+// Отчёты мастера (3б)
+// ---------------------------------------------------------------------
+export type ReportPeriod = 'd' | 'w' | 'm' | 'y';
+export type ExcelPeriod = 'cw' | 'pw' | 'm' | 'pm' | 'y';
+
+export function periodRange(period: ReportPeriod | ExcelPeriod, today: string): { from: string; to: string } {
+  const dow = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
+  const monday = addDays(today, -dow);
+  switch (period) {
+    case 'd':
+      return { from: today, to: today };
+    case 'w':
+    case 'cw':
+      return { from: monday, to: today };
+    case 'pw':
+      return { from: addDays(monday, -7), to: addDays(monday, -1) };
+    case 'm':
+      return { from: `${today.slice(0, 8)}01`, to: today };
+    case 'pm': {
+      const firstThis = `${today.slice(0, 8)}01`;
+      const to = addDays(firstThis, -1);
+      return { from: `${to.slice(0, 8)}01`, to };
+    }
+    case 'y':
+      return { from: `${today.slice(0, 4)}-01-01`, to: today };
+  }
+}
+
+export function periodLabel(lang: Lang, from: string, to: string): string {
+  return from === to
+    ? t(lang, 'r.periodDay', { date: fmtDate(from) })
+    : t(lang, 'r.periodRange', { from: fmtDate(from), to: fmtDate(to) });
+}
+
+export interface PersonGroup {
+  label: string;
+  is_whole: boolean;
+  rate: number;
+  status: 'pending' | 'confirmed' | 'rejected';
+  qty: number;
+  sum: number;
+  records: number;
+}
+
+// Таблицы «Операции» / «Целые изделия» по группам (подтверждено / ждёт; отклонённые — счётчиком).
+export function formatPersonGroups(groups: PersonGroup[], lang: Lang): string {
+  const section = (list: PersonGroup[]): string[] => {
+    const lines: string[] = [];
+    const render = (title: 'stats.ops' | 'stats.whole', items: PersonGroup[], whole: boolean) => {
+      if (items.length === 0) return;
+      lines.push(t(lang, title));
+      items.slice(0, MAX_LINES).forEach((g) =>
+        lines.push(
+          t(lang, 'stats.item', {
+            label: whole ? g.label.replace(WHOLE_SUFFIX, '') : g.label,
+            qty: Number(g.qty),
+            rate: money(Number(g.rate), lang),
+            sum: money(Number(g.sum), lang),
+          })
+        )
+      );
+    };
+    render('stats.ops', list.filter((g) => !g.is_whole), false);
+    render('stats.whole', list.filter((g) => g.is_whole), true);
+    lines.push(
+      t(lang, 'stats.sub', {
+        qty: list.reduce((s, g) => s + Number(g.qty), 0),
+        sum: money(list.reduce((s, g) => s + Number(g.sum), 0), lang),
+      })
+    );
+    return lines;
+  };
+  const confirmed = groups.filter((g) => g.status === 'confirmed');
+  const pending = groups.filter((g) => g.status === 'pending');
+  const rejected = groups.filter((g) => g.status === 'rejected').reduce((s, g) => s + Number(g.records), 0);
+  const out: string[] = [];
+  if (confirmed.length > 0) out.push(t(lang, 'stats.confirmed'), ...section(confirmed), '');
+  if (pending.length > 0) out.push(t(lang, 'stats.pending'), ...section(pending), '');
+  if (rejected > 0) out.push(t(lang, 'stats.rejected', { n: rejected }));
+  if (out.length === 0) return t(lang, 'r.personEmpty');
+  let text = out.join('\n').trim();
+  if (text.length > 3300) text = `${text.slice(0, text.lastIndexOf('\n', 3280))}\n…`;
+  return text;
+}
