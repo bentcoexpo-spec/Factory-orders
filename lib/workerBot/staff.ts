@@ -227,7 +227,7 @@ export async function onStaffCallback(
   const known = [
     'x', 'sh', 'cb', 'cd', 'ca', 'cw', 'cv', 'cr', 'cc', 'cq', 'cx',
     'ul', 'uc', 'un', 'us', 'ur', 'uq', 'ud', 'udy', 'up', 'upi', 'ux', 'uxy', 'ua', 'ui', 'uin',
-    'kp', 'km', 'ko', 'ka', 'kb', 'kbm', 'kbs', 'kao', 'kw', 'kr', 'kd', 'kdy', 'kor', 'kop', 'kod', 'kody', 'k0',
+    'kp', 'km', 'ko', 'kom', 'kot', 'kmv', 'ka', 'kb', 'kbm', 'kbs', 'kao', 'kw', 'kr', 'kd', 'kdy', 'kor', 'kop', 'kod', 'kody', 'k0',
     'r0', 'rp', 'rt', 'rw', 'rx', 'rxs', 'rxp',
     'g0', 'gp', 'gpn', 'gpa', 'gpr', 'gpd', 'gpdy', 'gr', 'grt', 'grm', 'grs', 'grx', 'grd', 'gm', 'gmt', 'gk', 'gkt', 'gb', 'gbs',
   ];
@@ -285,8 +285,11 @@ export async function onStaffCallback(
       // --- 📦 Изделия
       case 'k0': await showCatalog(c); return true;
       case 'kp': await showProfession(c, a); return true;
-      case 'km': await showModel(c, a); return true;
+      case 'km': await showModel(c, a, false); return true;
       case 'ko': await showOperation(c, a); return true;
+      case 'kom': await moveAsk(c, a); return true;
+      case 'kot': await moveDo(c, a); return true;
+      case 'kmv': await moveModeToggle(c); return true;
       case 'ka': await modelAddAsk(c, a); return true;
       case 'kb': await listAsk(c, a, null); return true;
       case 'kbm': await listAskInModel(c, a); return true;
@@ -818,44 +821,56 @@ async function showProfession(c: Ctx, profId: string) {
   await out(c, lines.join('\n'), rows);
 }
 
-async function showModel(c: Ctx, modelId: string) {
+async function showModel(c: Ctx, modelId: string, moveMode?: boolean) {
   const m = await sdo<ModelInfo>(c, 'staff_catalog_model', { model_id: modelId });
-  await setState(c.sb, c.tg, 'k_ctx', { profId: m.profession_id, modelId: m.id });
+  const prev = await getState(c.sb, c.tg);
+  const move = moveMode ?? (prev?.state === 'k_ctx' && prev.data.modelId === modelId ? prev.data.move === true : false);
+  await setState(c.sb, c.tg, 'k_ctx', { profId: m.profession_id, modelId: m.id, move });
   const table = m.ops.length === 0 ? t(c.lang, 'k.noOps') : m.ops.map((o, i) => `${i + 1}. ${o.name} — ${money(Number(o.rate), c.lang)}`).join('\n');
   const rows: InlineButton[][] = [];
   const nums = m.ops.slice(0, 40).map((o, i) => BTN(String(i + 1), `ko:${o.id}`));
   for (let i = 0; i < nums.length; i += 8) rows.push(nums.slice(i, i + 8));
-  rows.push([BTN(t(c.lang, 'k.btnAddOp'), `kao:${m.id}`), BTN(t(c.lang, 'k.addList'), `kbm:${m.id}`)]);
-  rows.push([BTN(t(c.lang, 'k.btnWhole'), `kw:${m.id}`), BTN(t(c.lang, 'k.btnRenameModel'), `kr:${m.id}`)]);
-  rows.push([BTN(t(c.lang, 'k.btnDeleteModel'), `kd:${m.id}`)]);
+  if (move) {
+    rows.push([BTN(t(c.lang, 'k.btnMoveOff'), 'kmv')]);
+  } else {
+    rows.push([BTN(t(c.lang, 'k.btnAddOp'), `kao:${m.id}`), BTN(t(c.lang, 'k.addList'), `kbm:${m.id}`)]);
+    if (m.ops.length > 0) rows.push([BTN(t(c.lang, 'k.btnMoveMode'), 'kmv')]);
+    rows.push([BTN(t(c.lang, 'k.btnWhole'), `kw:${m.id}`), BTN(t(c.lang, 'k.btnRenameModel'), `kr:${m.id}`)]);
+    rows.push([BTN(t(c.lang, 'k.btnDeleteModel'), `kd:${m.id}`)]);
+  }
   rows.push([BTN(t(c.lang, 'btn.back'), `kp:${m.profession_id}`)]);
-  await out(
-    c,
-    t(c.lang, 'k.model', {
-      name: m.name,
-      profession: m.profession_name,
-      whole: m.whole_rate ? money(Number(m.whole_rate), c.lang) : t(c.lang, 'k.wholeNone'),
-      table,
-    }),
-    rows
-  );
+  const text = t(c.lang, 'k.model', {
+    name: m.name,
+    profession: m.profession_name,
+    whole: m.whole_rate ? money(Number(m.whole_rate), c.lang) : t(c.lang, 'k.wholeNone'),
+    table,
+  });
+  await out(c, move ? `${text}\n\n${t(c.lang, 'k.moveHint')}` : text, rows);
 }
 
-async function modelCtx(c: Ctx): Promise<{ profId: string; modelId: string } | null> {
+async function moveModeToggle(c: Ctx) {
+  const ctx = await modelCtx(c);
+  if (!ctx) return void (await say(c, t(c.lang, 'err.stale')));
+  const st = await getState(c.sb, c.tg);
+  await showModel(c, ctx.modelId, !(st?.data.move === true));
+}
+
+async function modelCtx(c: Ctx): Promise<{ profId: string; modelId: string; move: boolean } | null> {
   const st = await getState(c.sb, c.tg);
   if (st?.state !== 'k_ctx') return null;
-  return { profId: String(st.data.profId), modelId: String(st.data.modelId) };
+  return { profId: String(st.data.profId), modelId: String(st.data.modelId), move: st.data.move === true };
 }
 
 async function showOperation(c: Ctx, opId: string) {
   const ctx = await modelCtx(c);
   if (!ctx) return void (await say(c, t(c.lang, 'err.stale')));
+  if (ctx.move) return moveAsk(c, opId);
   const m = await sdo<ModelInfo>(c, 'staff_catalog_model', { model_id: ctx.modelId });
   const op = m.ops.find((o) => o.id === opId);
   if (!op) return showModel(c, ctx.modelId);
   await out(c, t(c.lang, 'k.op', { name: op.name, model: m.name, rate: money(Number(op.rate), c.lang) }), [
     [BTN(t(c.lang, 'k.btnRename'), `kor:${opId}`), BTN(t(c.lang, 'k.btnRate'), `kop:${opId}`)],
-    [BTN(t(c.lang, 'k.btnDelete'), `kod:${opId}`)],
+    [BTN(t(c.lang, 'k.btnMove'), `kom:${opId}`), BTN(t(c.lang, 'k.btnDelete'), `kod:${opId}`)],
     [BTN(t(c.lang, 'btn.back'), `km:${m.id}`)],
   ]);
 }
@@ -1471,4 +1486,58 @@ async function bcastSend(c: Ctx) {
   }
   await rpc<null>(c.sb, 'bot_broadcast_result', { p_id: res.id, p_sent: sent, p_failed: failed });
   await sendMessage(c.chatId, t(c.lang, 'g.bcastDone', { sent, failed }), await staffKeyboard(c));
+}
+
+
+// --- ↪️ Перенос операции в другую модель (из карточки: номер → ↪️ → модель; в режиме переноса: номер → модель)
+interface AllModel {
+  id: string;
+  name: string;
+  profession_id: string;
+  profession_name: string;
+}
+
+async function moveAsk(c: Ctx, opId: string) {
+  const ctx = await modelCtx(c);
+  if (!ctx) return void (await say(c, t(c.lang, 'err.stale')));
+  const [m, all] = await Promise.all([
+    sdo<ModelInfo>(c, 'staff_catalog_model', { model_id: ctx.modelId }),
+    sdo<AllModel[]>(c, 'staff_catalog_all', {}),
+  ]);
+  const op = m.ops.find((o) => o.id === opId);
+  if (!op) return showModel(c, ctx.modelId);
+  const targets = all
+    .filter((x) => x.id !== ctx.modelId)
+    .sort((a, b) => (a.profession_id === m.profession_id ? 0 : 1) - (b.profession_id === m.profession_id ? 0 : 1) || a.profession_name.localeCompare(b.profession_name, 'ru') || a.name.localeCompare(b.name, 'ru'))
+    .slice(0, 80);
+  if (targets.length === 0) return out(c, t(c.lang, 'k.moveNone'), [[BTN(t(c.lang, 'btn.back'), `km:${ctx.modelId}`)]]);
+  await setState(c.sb, c.tg, 'k_move', { opId, opName: op.name, modelId: ctx.modelId, profId: ctx.profId, move: ctx.move, targets: targets.map((x) => x.id), names: targets.map((x) => `${x.profession_name} / ${x.name}`) });
+  const rows = targets.map((x, i) => [BTN(x.profession_id === m.profession_id ? `📦 ${x.name}` : `${x.profession_name} · ${x.name}`, `kot:${i}`)]);
+  rows.push([BTN(t(c.lang, 'btn.back'), `km:${ctx.modelId}`)]);
+  await out(c, t(c.lang, 'k.moveTo', { name: op.name }), rows);
+}
+
+async function moveDo(c: Ctx, idx: string) {
+  const st = await getState(c.sb, c.tg);
+  if (st?.state !== 'k_move') return void (await say(c, t(c.lang, 'err.stale')));
+  const targets = (st.data.targets as string[]) ?? [];
+  const names = (st.data.names as string[]) ?? [];
+  const i = Number(idx);
+  const target = targets[i];
+  if (!target) return void (await say(c, t(c.lang, 'err.stale')));
+  const opId = String(st.data.opId);
+  const srcModel = String(st.data.modelId);
+  const move = st.data.move === true;
+  try {
+    await sdo(c, 'staff_catalog_set', { action: 'move_op', id: opId, model_id: target });
+  } catch (err) {
+    // Не вышло (например, такое название уже есть) — остаёмся на исходной модели в том же режиме.
+    await setState(c.sb, c.tg, 'k_ctx', { profId: String(st.data.profId), modelId: srcModel, move });
+    throw err;
+  }
+  const [prof, model] = (names[i] ?? ' / ').split(' / ');
+  await setState(c.sb, c.tg, 'k_ctx', { profId: String(st.data.profId), modelId: srcModel, move });
+  await out(c, t(c.lang, 'k.moved', { name: String(st.data.opName), profession: prof, model: model ?? '' }));
+  // Возвращаем к исходной модели: следующую операцию можно переносить сразу.
+  await showModel({ ...c, mid: undefined }, srcModel, move);
 }

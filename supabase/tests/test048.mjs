@@ -280,6 +280,25 @@ async function main() {
     return del.result === 'deleted';
   })());
 
+
+  // ----- перенос операции и модели (049)
+  const mDst = await site(db, 'staff_catalog_set', { action: 'add_model', profession_id: pSew, name: 'Приёмник' });
+  const mvOp = await site(db, 'staff_catalog_set', { action: 'add_op', model_id: mT, name: 'Переносимая', rate: 70 });
+  const recMv = await botRec(wu1, eF1, mvOp.id, 3);
+  await site(db, 'staff_catalog_set', { action: 'move_op', id: mvOp.id, model_id: mDst.id });
+  check('move_op: операция в другой модели, тот же id, ставка и запись на месте', (await admin(db, `select model_id, rate_per_piece::numeric as r from catalog_operations where id = $1`, [mvOp.id])).rows[0].model_id === mDst.id && Number((await admin(db, `select rate_per_piece from work_records where id = $1`, [recMv])).rows[0].rate_per_piece) === 70);
+  await site(db, 'staff_catalog_set', { action: 'add_op', model_id: mT, name: 'Переносимая', rate: 5 });
+  check('move_op в модель с такой же операцией — отказ «уже есть»', await siteFails(db, 'staff_catalog_set', { action: 'move_op', id: (await admin(db, `select id from catalog_operations where model_id = $1 and name = 'Переносимая'`, [mT])).rows[0].id, model_id: mDst.id }, /duplicate_name/));
+  check('move_op в несуществующую/скрытую модель — отказ', await siteFails(db, 'staff_catalog_set', { action: 'move_op', id: mvOp.id, model_id: '00000000-0000-0000-0000-00000000dead' }, /catalog_item_not_found/));
+  await site(db, 'staff_catalog_set', { action: 'move_model', id: mDst.id, profession_id: pIron });
+  check('move_model: модель в другой профессии', (await admin(db, `select profession_id from catalog_models where id = $1`, [mDst.id])).rows[0].profession_id === pIron);
+  check('move_model в скрытую профессию — отказ', await siteFails(db, 'staff_catalog_set', { action: 'move_model', id: mDst.id, profession_id: '00000000-0000-0000-0000-00000000dead' }, /profession_not_found/));
+  const allM = await site(db, 'staff_catalog_all', {});
+  check('staff_catalog_all: модели с профессией и числом операций', allM.some((x) => x.name === 'Футболка' && x.profession_name === 'Швея') && allM.some((x) => x.name === 'Приёмник' && x.profession_name === 'Утюжник'));
+  await as(db, 'kladovshik');
+  check('кладовщику перенос и список моделей недоступны', (await siteFails(db, 'staff_catalog_set', { action: 'move_op', id: mvOp.id, model_id: mT }, /insufficient_privilege/)) && (await siteFails(db, 'staff_catalog_all', {}, /insufficient_privilege/)));
+  await as(db, 'master');
+
   // ===================== E. Бот: bot_as_staff =====================
   check('привязанный мастер: staff_pending из бота — только его цех', (await bot(db, 1001, 'staff_pending')).shop === 'factory');
   check('мастер не может выбрать чужой цех через бота', await botFails(db, 1001, 'staff_pending', { shop: 'workshop' }, /not_your_shop/));

@@ -214,15 +214,17 @@ export default function CatalogEditor() {
     await reload();
   }
 
-  async function confirmMove() {
-    if (!moving) return;
-    if (moving.kind === 'model') {
-      if (!moving.professionId) return;
-      if (await run(() => supabase.from('catalog_models').update({ profession_id: moving.professionId }).eq('id', moving.id), 'Модель перенесена')) setMoving(null);
-    } else {
-      if (!moving.modelId) return;
-      if (await run(() => supabase.from('catalog_operations').update({ model_id: moving.modelId }).eq('id', moving.id), 'Операция перенесена')) setMoving(null);
-    }
+  // Перенос — одним нажатием на целевую модель (профессию): операция остаётся той же,
+  // записи и суммы не меняются.
+  async function moveOperationTo(opId: string, modelId: string) {
+    const target = data.models.find((m) => m.id === modelId);
+    const prof = data.professions.find((p) => p.id === target?.profession_id);
+    if (await run(() => supabase.from('catalog_operations').update({ model_id: modelId }).eq('id', opId), `Операция перенесена в «${prof?.name ?? ''} / ${target?.name ?? ''}»`)) setMoving(null);
+  }
+
+  async function moveModelTo(modelId: string, professionId: string) {
+    const prof = data.professions.find((p) => p.id === professionId);
+    if (await run(() => supabase.from('catalog_models').update({ profession_id: professionId }).eq('id', modelId), `Модель перенесена в «${prof?.name ?? ''}»`)) setMoving(null);
   }
 
   const addPlaceholder = view.level === 'professions' ? 'Новая профессия' : view.level === 'models' ? 'Новая модель' : 'Новая операция';
@@ -319,18 +321,15 @@ export default function CatalogEditor() {
               </div>
               {moving && moving.kind === 'model' && moving.id === m.id && (
                 <div className="space-y-2 rounded-md bg-slate-50 p-3">
-                  <select className="input" value={moving.professionId} onChange={(e) => setMoving({ ...moving, professionId: e.target.value })}>
-                    <option value="">В какую профессию…</option>
-                    {data.professions.filter((p) => p.id !== m.profession_id).map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="flex gap-2">
-                    <button type="button" disabled={busy || !moving.professionId} onClick={confirmMove} className="btn-primary btn-sm">
-                      Перенести
-                    </button>
+                  <p className="text-xs font-medium text-slate-500">Куда перенести модель — нажмите профессию:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {data.professions
+                      .filter((p) => p.id !== m.profession_id)
+                      .map((p) => (
+                        <button key={p.id} type="button" disabled={busy} onClick={() => moveModelTo(m.id, p.id)} className="btn-tonal">
+                          {p.name}
+                        </button>
+                      ))}
                     <button type="button" onClick={() => setMoving(null)} className="btn-ghost-muted">
                       Отмена
                     </button>
@@ -393,36 +392,31 @@ export default function CatalogEditor() {
                   </button>
                 </div>
                 {moving && moving.kind === 'operation' && moving.id === op.id && (
-                  <div className="space-y-2 rounded-md bg-slate-50 p-3">
-                    <select
-                      className="input"
-                      value={moving.professionId}
-                      onChange={(e) => setMoving({ ...moving, professionId: e.target.value, modelId: '' })}
-                    >
-                      {data.professions.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                    <select className="input" value={moving.modelId} onChange={(e) => setMoving({ ...moving, modelId: e.target.value })}>
-                      <option value="">В какую модель…</option>
-                      {data.models
-                        .filter((m) => m.profession_id === moving.professionId && m.id !== op.model_id)
-                        .map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name}
-                          </option>
-                        ))}
-                    </select>
-                    <div className="flex gap-2">
-                      <button type="button" disabled={busy || !moving.modelId} onClick={confirmMove} className="btn-primary btn-sm">
-                        Перенести
-                      </button>
-                      <button type="button" onClick={() => setMoving(null)} className="btn-ghost-muted">
+                  <div className="space-y-3 rounded-md bg-slate-50 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-medium text-slate-500">Куда перенести «{op.name}» — нажмите модель:</p>
+                      <button type="button" onClick={() => setMoving(null)} className="btn-ghost-muted shrink-0">
                         Отмена
                       </button>
                     </div>
+                    {[...data.professions]
+                      .sort((a, b) => (a.id === model.profession_id ? -1 : b.id === model.profession_id ? 1 : a.name.localeCompare(b.name, 'ru')))
+                      .map((p) => {
+                        const targets = data.models.filter((x) => x.profession_id === p.id && x.id !== op.model_id);
+                        if (targets.length === 0) return null;
+                        return (
+                          <div key={p.id}>
+                            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">{p.name}</p>
+                            <div className="flex flex-wrap gap-2">
+                              {targets.map((x) => (
+                                <button key={x.id} type="button" disabled={busy} onClick={() => moveOperationTo(op.id, x.id)} className="btn-tonal">
+                                  {x.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                   </div>
                 )}
               </div>

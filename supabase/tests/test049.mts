@@ -270,6 +270,50 @@ check('удаление модели спрашивает подтвержден
 await press(MASTER, `kdy:${maika}`);
 check('модель без записей удалена', (await db.query(`select 1 from catalog_models where id = $1`, [maika])).rows.length === 0 && last(MASTER).text.includes('Удалено'));
 
+
+// ===================== ↪️ Перенос операций =====================
+const mDest = (await db.query(`insert into catalog_models (profession_id, name) values ($1, 'Назначение') returning id`, [pSew])).rows[0].id;
+const opA = (await db.query(`insert into catalog_operations (model_id, name, rate_per_piece) values ($1, 'Общая-1', 55) returning id`, [mT])).rows[0].id;
+const opB = (await db.query(`insert into catalog_operations (model_id, name, rate_per_piece) values ($1, 'Общая-2', 66) returning id`, [mT])).rows[0].id;
+const opC = (await db.query(`insert into catalog_operations (model_id, name, rate_per_piece) values ($1, 'Общая-3', 77) returning id`, [mT])).rows[0].id;
+await db.query('reset role');
+await db.transaction(async (tx: any) => {
+  await tx.query(`select set_config('app.bot_write', 'on', true)`);
+  await tx.query(`insert into work_records (employee_id, catalog_operation_id, quantity, date, bot_user_id) values ($1, $2, 4, public.tashkent_today(), $3)`, [e1, opA, wu1]);
+});
+await asUser(db, 'master');
+await press(MASTER, `km:${mT}`);
+scr = last(MASTER);
+check('на экране модели есть «↪️ Перенос операций»', scr.labels.includes('↪️ Перенос операций') && scr.buttons.includes('kmv'));
+// из карточки: номер → ↪️ → модель = 3 нажатия
+await press(MASTER, `ko:${opA}`);
+check('карточка операции: «↪️ Перенести»', last(MASTER).buttons.includes(`kom:${opA}`));
+await press(MASTER, `kom:${opA}`);
+scr = last(MASTER);
+check('список целей: модели своей профессии первыми (с 📦), затем других профессий; текущей модели нет', scr.text.includes('Куда перенести «Общая-1»') && scr.labels.some((l) => l === '📦 Назначение') && scr.labels.some((l) => l.includes('·')) && !scr.labels.includes('📦 Футболка'), JSON.stringify(scr.labels));
+const tgt = scr.buttons[scr.labels.indexOf('📦 Назначение')];
+m = mark();
+await press(MASTER, tgt);
+check('операция перенесена в «Швея / Назначение», тот же id, запись и ставка прежние', (await db.query(`select model_id from catalog_operations where id = $1`, [opA])).rows[0].model_id === mDest && (await db.query(`select count(*)::int as n from work_records where catalog_operation_id = $1`, [opA])).rows[0].n === 1 && since(m, MASTER).some((s) => s.text.includes('перенесена: Швея / Назначение')), JSON.stringify(since(m, MASTER).map((s) => s.text)));
+check('после переноса снова экран исходной модели без перенесённой операции', last(MASTER).text.includes('Футболка') && !last(MASTER).text.includes('Общая-1'));
+// режим переноса: номер → модель = 2 нажатия на операцию
+await press(MASTER, 'kmv');
+scr = last(MASTER);
+check('режим переноса: подсказка, только номера и «Выйти из переноса»', scr.text.includes('Режим переноса') && scr.labels.includes('◀️ Выйти из переноса') && !scr.labels.includes('➕ Операция'), JSON.stringify(scr.labels));
+await press(MASTER, `ko:${opB}`);
+check('в режиме переноса номер сразу открывает выбор модели (1 нажатие)', last(MASTER).text.includes('Куда перенести «Общая-2»') && last(MASTER).buttons.some((b) => b.startsWith('kot:')));
+await press(MASTER, last(MASTER).buttons[last(MASTER).labels.indexOf('📦 Назначение')]);
+check('вторая операция перенесена (2 нажатия), режим переноса сохранился', (await db.query(`select model_id from catalog_operations where id = $1`, [opB])).rows[0].model_id === mDest && last(MASTER).text.includes('Режим переноса'));
+// конфликт названий
+await db.query(`insert into catalog_operations (model_id, name, rate_per_piece) values ($1, 'Общая-3', 10)`, [mDest]);
+await press(MASTER, `ko:${opC}`);
+await press(MASTER, last(MASTER).buttons[last(MASTER).labels.indexOf('📦 Назначение')]);
+check('в целевой модели уже есть такая операция — «такое название уже есть», операция осталась', last(MASTER).text.includes('уже есть') && (await db.query(`select model_id from catalog_operations where id = $1`, [opC])).rows[0].model_id === mT);
+await press(MASTER, 'kmv');
+check('«Выйти из переноса» возвращает обычный экран модели', last(MASTER).labels.includes('➕ Операция') && !last(MASTER).text.includes('Режим переноса'));
+check('метка записи в представлении после переноса: «Назначение · Общая-1»', (await db.query(`select operation_label from work_records_all_view where catalog_operation_id = $1`, [opA])).rows[0].operation_label === 'Назначение · Общая-1');
+await press(MASTER, `km:${mT}`);
+
 // ===================== CEO =====================
 await say(CEO, '/menu');
 const ceoMsgs = since(0, CEO);
