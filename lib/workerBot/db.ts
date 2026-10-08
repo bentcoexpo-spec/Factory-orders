@@ -38,15 +38,15 @@ export interface Recipient {
   language: Lang;
 }
 
+// Каталог для работника: только названия — ни ставок, ни цен целого изделия.
 export interface CatalogOp {
   id: string;
   name: string;
-  rate: number;
 }
 export interface CatalogModel {
   id: string;
   name: string;
-  whole_rate: number | null;
+  has_whole: boolean;
   ops: CatalogOp[];
 }
 export interface BotCatalog {
@@ -60,8 +60,6 @@ export interface WorkRec {
   label: string;
   is_whole: boolean;
   quantity: number;
-  rate: number;
-  total: number;
   status: 'pending' | 'confirmed' | 'rejected';
   editable: boolean;
 }

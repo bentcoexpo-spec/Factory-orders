@@ -181,7 +181,7 @@ const models = last(W1);
 check('список моделей (нет чужой профессии)', models.buttons.filter((b) => b.startsWith('m:')).length === 2 && models.labels.some((l) => l === 'Футболка'));
 await press(W1, models.buttons[models.labels.indexOf('Футболка')]);
 const ops = last(W1);
-check('операции с ценой на кнопке: «Оверлок — 120 so\'m»', ops.labels.some((l) => l === "Оверлок — 120 so'm") && ops.labels.some((l) => l.startsWith('Строчка — 80')), JSON.stringify(ops.labels));
+check('операции — только названия, без цен на кнопках', ops.labels.includes('Оверлок') && ops.labels.includes('Строчка') && !ops.labels.some((l: string) => /so'm|сум|\d/.test(l)), JSON.stringify(ops.labels));
 await press(W1, ops.buttons[ops.labels.findIndex((l) => l.startsWith('Оверлок'))]);
 check('вопрос о количестве', last(W1).text.includes('Футболка · Оверлок') && last(W1).text.includes('Necha dona'));
 await say(W1, 'много');
@@ -190,11 +190,11 @@ await say(W1, '0');
 check('нуль отклонён', last(W1).text.includes('1 dan 99999'));
 await say(W1, '10');
 const review = last(W1);
-check('сводка: 10 dona × 120 so\'m = 1.200 so\'m, кнопки подтверждения', review.text.includes('10 dona × 120 so\'m = 💰 <b>1.200 so\'m</b>') && review.buttons.includes('ok') && review.buttons.includes('no'), review.text);
+check('сводка: «10 dona» без цены и суммы, кнопки подтверждения', review.text.includes('10 dona') && !/so'm|💰|×/.test(review.text) && review.buttons.includes('ok') && review.buttons.includes('no'), review.text);
 m = mark();
 await press(W1, 'ok');
 const saved = last(W1);
-check('«Saqlandi» с суммой и пометкой про подтверждение мастером; кнопки «Yana qo\'shish»', saved.text.includes('Saqlandi') && saved.text.includes('1.200 so\'m') && saved.text.includes('tasdiqlashi') && saved.buttons.includes('more'), saved.text);
+check('«Saqlandi» с количеством и пометкой про подтверждение мастером, без денег; кнопка «Yana qo\'shish»', saved.text.includes('Saqlandi') && saved.text.includes('10 dona') && saved.text.includes('tasdiqlashi') && !/so'm|💰|×/.test(saved.text) && saved.buttons.includes('more'), saved.text);
 const rec1 = (await db.query(`select id, status, source, quantity, rate_per_piece from work_records where employee_id = $1`, [emp.id])).rows;
 check('в базе одна запись: pending, source=bot, 10 × 120', rec1.length === 1 && rec1[0].status === 'pending' && rec1[0].source === 'bot' && rec1[0].quantity === 10 && Number(rec1[0].rate_per_piece) === 120);
 await press(W1, 'ok');
@@ -204,11 +204,11 @@ check('повторное «Подтвердить»: дубля нет', (await
 await press(W1, 'more');
 await press(W1, 'k:w');
 const wm = last(W1);
-check('целое изделие: модель с ценой на кнопке', wm.labels.some((l) => l === "Футболка — 1.500 so'm") && wm.buttons.filter((b) => b.startsWith('m:')).length === 1, JSON.stringify(wm.labels));
+check('целое изделие: модель — только название, без цены', wm.labels.includes('Футболка') && wm.buttons.filter((b: string) => b.startsWith('m:')).length === 1 && !wm.labels.some((l: string) => /so'm|\d/.test(l)), JSON.stringify(wm.labels));
 await press(W1, wm.buttons.find((b) => b.startsWith('m:'))!);
 check('количество для целого изделия', last(W1).text.includes('Футболка (butun)'));
 await say(W1, '3');
-check('сводка целого изделия: 3 × 1.500 = 4.500', last(W1).text.includes('4.500 so\'m'));
+check('сводка целого изделия: 3 dona, без суммы', last(W1).text.includes('3 dona') && !/so'm|💰/.test(last(W1).text), last(W1).text);
 await press(W1, 'ok');
 check('целое изделие сохранено', last(W1).text.includes('Saqlandi') && last(W1).text.includes('Футболка (butun)'), last(W1).text);
 
@@ -232,7 +232,7 @@ await say(W1, '📊 Mening statistikam');
 check('выбор периода', last(W1).buttons.includes('s:d') && last(W1).buttons.includes('s:w') && last(W1).buttons.includes('s:m'));
 await press(W1, 's:d');
 let st = last(W1);
-check('сегодня: только «ждёт подтверждения» (на узбекском), суммы с точками', st.text.includes('Tasdiqlashni kutmoqda') && !st.text.includes('Usta tasdiqlagan') && st.text.includes('Футболка · Оверлок — 10 dona × 120 so\'m = 1.200 so\'m') && st.text.includes('Butun buyumlar:') && st.text.includes('• Футболка — 3 dona × 1.500 so\'m = 4.500 so\'m'), st.text);
+check('сегодня: только «ждёт подтверждения» (на узбекском), только штуки', st.text.includes('Tasdiqlashni kutmoqda') && !st.text.includes('Usta tasdiqlagan') && st.text.includes('• Футболка · Оверлок — 10 dona') && st.text.includes('Butun buyumlar:') && st.text.includes('• Футболка — 3 dona') && st.text.includes('Jami: 13 dona') && !/so'm|💰|×/.test(st.text), st.text);
 check('в статистике нет чужих имён', !st.text.includes('Алишер') && st.buttons.includes('fix'));
 
 // мастер подтверждает первую запись (эмуляция Этапа 3)
@@ -242,12 +242,12 @@ await db.query(`update work_records set status = 'confirmed' where id = $1`, [re
 await db.query(`alter table work_records enable trigger work_records_before_update`);
 await press(W1, 's:d');
 st = last(W1);
-check('после подтверждения: отдельно «Usta tasdiqlagan» (1.200) и «Tasdiqlashni kutmoqda» (4.500)', st.text.includes('Usta tasdiqlagan') && st.text.includes('Tasdiqlashni kutmoqda') && st.text.includes('1.200 so\'m') && st.text.includes('4.500 so\'m'), st.text);
+check('после подтверждения: отдельно «Usta tasdiqlagan» (10 dona) и «Tasdiqlashni kutmoqda» (3 dona)', st.text.includes('Usta tasdiqlagan') && st.text.includes('Tasdiqlashni kutmoqda') && st.text.includes('Jami: 10 dona') && st.text.includes('Jami: 3 dona') && !/so'm|💰/.test(st.text), st.text);
 await press(W1, 's:w');
 st = last(W1);
-check('неделя: есть сравнение с прошлой неделей', st.text.includes("O'tgan hafta") && st.text.includes('0 so\'m'), st.text);
+check('неделя: сравнение с прошлой неделей — в штуках', st.text.includes("O'tgan hafta") && st.text.includes('0 dona') && !/so'm|💰/.test(st.text), st.text);
 await press(W1, 's:m');
-check('месяц: подтверждённое (1.200) и неподтверждённое (4.500) — отдельно', last(W1).text.includes('Usta tasdiqlagan') && last(W1).text.includes('1.200 so\'m') && last(W1).text.includes('4.500 so\'m'), last(W1).text);
+check('месяц: подтверждённое (10) и неподтверждённое (3) — отдельно, в штуках', last(W1).text.includes('Usta tasdiqlagan') && last(W1).text.includes('Jami: 10 dona') && last(W1).text.includes('Jami: 3 dona'), last(W1).text);
 
 // ===================== 7. Исправление =====================
 await press(W1, 'fix');
@@ -259,7 +259,7 @@ check('карточка записи: изменить количество / у
 await press(W1, `eq:${wholeId}`);
 check('вопрос о новом количестве', last(W1).text.includes('yangi son'));
 await say(W1, '5');
-check('количество исправлено: 5 × 1.500 = 7.500', last(W1).text.includes('Tuzatildi') && last(W1).text.includes('7.500 so\'m'), last(W1).text);
+check('количество исправлено: 5 dona, без денег', last(W1).text.includes('Tuzatildi') && last(W1).text.includes('5 dona') && !/so'm|💰|×/.test(last(W1).text), last(W1).text);
 check('в базе количество 5, ставка прежняя', (await db.query(`select quantity, rate_per_piece from work_records where id = $1`, [wholeId])).rows[0].quantity === 5);
 await press(W1, `ed:${wholeId}`);
 check('удаление спрашивает подтверждение', last(W1).buttons.includes(`edy:${wholeId}`));
@@ -313,6 +313,12 @@ const wu = (await db.query(`select id from worker_bot_users where telegram_id = 
 await db.query(`select public.decide_worker($1, 'remove')`, [wu]);
 await say(W1, '➕ Добавить работу');
 check('снятый с бота работник работать больше не может', !last(W1).buttons.some((b) => b.startsWith('k:')) && last(W1).text.includes('не подключены'), last(W1).text);
+
+// ===================== Деньги работнику не показываются =====================
+const MONEY = /расценк|сум|so['’ʻ]m|\bsum\b|заработ|зарплат|оплат|ставк|цен[аыуеой]|стоимост|💰|×|ish haqi|maosh|oylik|narx|\bpul\b|summa|to['’ʻ]lov/i;
+const workerChats = new Set([W1, 2002]);
+const leaks = sent.filter((x) => workerChats.has(x.chat) && x.method !== 'answerCallbackQuery' && (MONEY.test(x.text) || x.labels.some((l: string) => MONEY.test(l))));
+check('за весь сценарий НИ ОДНО сообщение работнику (ни текст, ни кнопки, ни uz, ни ru) не содержит денег', leaks.length === 0, JSON.stringify(leaks.map((x) => x.text.slice(0, 80))));
 
 console.log(`\nИтого: ${passed} прошло, ${failed} провалено.`);
 process.exit(failed > 0 ? 1 : 0);

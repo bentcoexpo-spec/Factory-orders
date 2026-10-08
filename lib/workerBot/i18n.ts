@@ -56,7 +56,7 @@ const ru = {
 
   // --- добавить работу
   'add.noProfession': '⚠️ У вас не указана профессия. Напишите мастеру — он укажет её в табеле.',
-  'add.emptyCatalog': '⚠️ Для вашей профессии в каталоге пока нет операций с расценкой. Обратитесь к мастеру.',
+  'add.emptyCatalog': '⚠️ Для вашей профессии в каталоге пока нет доступных операций. Обратитесь к мастеру.',
   'add.kind': '➕ Что вы сделали?',
   'add.kindWhole': '📦 Целое изделие',
   'add.kindOp': '🧵 Операция',
@@ -64,11 +64,11 @@ const ru = {
   'add.pickOp': '📦 Модель «{model}». 🧵 Выберите операцию:',
   'add.askQty': '➕ {label}\nСколько штук? Напишите целое число.',
   'add.badQty': '⚠️ Нужно целое число от 1 до 99999. Попробуйте ещё раз.',
-  'add.review': '📋 Проверьте запись:\n{label}\n{qty} шт × {rate} = 💰 <b>{total}</b>\n📅 {date}',
+  'add.review': '📋 Проверьте запись:\n{label}\n{qty} шт\n📅 {date}',
   'add.confirm': '✅ Подтвердить',
   'add.cancelled': '❌ Отменено, ничего не сохранено.',
   'add.saved':
-    '✅ Сохранено\n{label}\n{qty} шт × {rate} = 💰 <b>{total}</b>\n⏳ Мастер ещё должен подтвердить запись — до этого она не идёт в оплату.',
+    '✅ Сохранено\n{label}\n{qty} шт\n⏳ Мастер ещё должен подтвердить запись.',
   'add.again': '➕ Добавить ещё',
   'add.fix': '✏️ Исправить записи',
   'add.gone': '⚠️ Эта позиция больше недоступна в каталоге. Начните заново.',
@@ -90,21 +90,23 @@ const ru = {
   'stats.sub': '💰 Итого: {qty} шт — <b>{sum}</b>',
   'stats.empty': '📊 За этот период записей нет.',
   'stats.rejected': '🚫 Отклонено мастером записей: {n}',
-  'stats.compare': '↔️ Прошлая неделя за тот же период: {prev}. Эта неделя: {cur}. {diff}',
-  'stats.up': '▲ больше на {n}',
-  'stats.down': '▼ меньше на {n}',
-  'stats.same': 'без изменений',
+  'ws.item': '• {label} — {qty} шт',
+  'ws.sub': '📦 Итого: {qty} шт',
+  'ws.compare': '↔️ Прошлая неделя за тот же период: {prev} шт. Эта неделя: {cur} шт. {diff}',
+  'ws.up': '▲ больше на {n} шт',
+  'ws.down': '▼ меньше на {n} шт',
+  'ws.same': 'без изменений',
   'stats.fix': '✏️ Исправить записи за сегодня',
 
   // --- исправление
   'edit.title': '✏️ Записи за сегодня, которые ещё можно исправить:',
   'edit.none':
     '⚠️ Сегодня нет записей, которые можно исправить. Исправлять можно только свои записи за сегодня, пока мастер их не подтвердил.',
-  'edit.card': '{label}\n{qty} шт × {rate} = 💰 <b>{total}</b>\nЧто сделать?',
+  'edit.card': '{label}\n{qty} шт\nЧто сделать?',
   'edit.btnQty': '✏️ Изменить количество',
   'edit.btnDel': '🗑 Удалить',
   'edit.askQty': 'Новое количество для «{label}» (сейчас {qty} шт). Напишите целое число.',
-  'edit.updated': '✅ Исправлено: {label}\n{qty} шт × {rate} = 💰 <b>{total}</b>',
+  'edit.updated': '✅ Исправлено: {label}\n{qty} шт',
   'edit.confirmDel': 'Удалить запись «{label}», {qty} шт?',
   'edit.yesDel': '🗑 Да, удалить',
   'edit.no': '❌ Нет',
@@ -173,9 +175,9 @@ const ru = {
   'c.notFound': '⚠️ Запись не найдена — возможно, её уже удалили.',
 
   // --- сообщения работнику о решении мастера
-  'wn.adjusted': '✏️ Мастер изменил вашу запись и подтвердил её:\n{label}\n{old} → {qty} шт × {rate} = 💰 <b>{sum}</b>\n📅 {date}',
+  'wn.adjusted': '✏️ Мастер изменил вашу запись и подтвердил её:\n{label}\n{old} → {qty} шт\n📅 {date}',
   'wn.rejected': '🚫 Мастер отклонил вашу запись:\n{label}, {qty} шт\n📅 {date}\nПричина: {reason}',
-  'wn.edited': '✏️ Мастер исправил вашу запись:\nБыло: {oldLabel}, {oldQty} шт\nСтало: {label}, {qty} шт × {rate} = 💰 <b>{sum}</b>\n📅 {date}',
+  'wn.edited': '✏️ Мастер исправил вашу запись:\nБыло: {oldLabel}, {oldQty} шт\nСтало: {label}, {qty} шт\n📅 {date}',
   'wn.deleted': '🗑 Мастер удалил вашу запись:\n{label}, {qty} шт\n📅 {date}',
 
   // --- 👷 Работники
@@ -384,7 +386,7 @@ const ru = {
   'bc.header': '📣 <b>Сообщение от мастера</b>\n\n{text}',
   'rm.worker': '🔔 Сегодня вы ещё ничего не внесли. Нажмите «➕ Добавить работу», чтобы мастер мог подтвердить вашу работу.',
   'rm.master': '🔔 Ждут подтверждения: записей {count}. Откройте «✅ Подтверждение».',
-  'rate.line': '🏅 Место в рейтинге ({profession}): {place}-е из {total}',
+  'rank.line': '🏅 Место в рейтинге по штукам ({profession}): {place}-е из {participants}',
   'day.1': 'Пн',
   'day.2': 'Вт',
   'day.3': 'Ср',
@@ -430,7 +432,7 @@ const uz: Record<MessageKey, string> = {
   'menu.title': '👷 Amalni tanlang:',
 
   'add.noProfession': "⚠️ Kasbingiz ko'rsatilmagan. Ustaga yozing — u tabelda ko'rsatadi.",
-  'add.emptyCatalog': "⚠️ Kasbingiz uchun katalogda narxi belgilangan amallar hali yo'q. Ustaga murojaat qiling.",
+  'add.emptyCatalog': "⚠️ Kasbingiz uchun katalogda hozircha mavjud amallar yo'q. Ustaga murojaat qiling.",
   'add.kind': '➕ Nima qildingiz?',
   'add.kindWhole': '📦 Butun buyum',
   'add.kindOp': '🧵 Amal',
@@ -438,11 +440,11 @@ const uz: Record<MessageKey, string> = {
   'add.pickOp': '📦 «{model}» modeli. 🧵 Amalni tanlang:',
   'add.askQty': '➕ {label}\nNecha dona? Butun son yozing.',
   'add.badQty': "⚠️ 1 dan 99999 gacha butun son kerak. Qayta urinib ko'ring.",
-  'add.review': '📋 Yozuvni tekshiring:\n{label}\n{qty} dona × {rate} = 💰 <b>{total}</b>\n📅 {date}',
+  'add.review': '📋 Yozuvni tekshiring:\n{label}\n{qty} dona\n📅 {date}',
   'add.confirm': '✅ Tasdiqlash',
   'add.cancelled': '❌ Bekor qilindi, hech narsa saqlanmadi.',
   'add.saved':
-    "✅ Saqlandi\n{label}\n{qty} dona × {rate} = 💰 <b>{total}</b>\n⏳ Usta yozuvni hali tasdiqlashi kerak — shu paytgacha u to'lovga kirmaydi.",
+    "✅ Saqlandi\n{label}\n{qty} dona\n⏳ Usta yozuvni hali tasdiqlashi kerak.",
   'add.again': "➕ Yana qo'shish",
   'add.fix': "✏️ Yozuvlarni tuzatish",
   'add.gone': "⚠️ Bu pozitsiya katalogda endi yo'q. Qaytadan boshlang.",
@@ -463,20 +465,22 @@ const uz: Record<MessageKey, string> = {
   'stats.sub': '💰 Jami: {qty} dona — <b>{sum}</b>',
   'stats.empty': "📊 Bu davrda yozuvlar yo'q.",
   'stats.rejected': '🚫 Usta rad etgan yozuvlar: {n}',
-  'stats.compare': "↔️ O'tgan hafta shu davrda: {prev}. Bu hafta: {cur}. {diff}",
-  'stats.up': "▲ ko'proq: {n}",
-  'stats.down': '▼ kamroq: {n}',
-  'stats.same': "o'zgarishsiz",
+  'ws.item': '• {label} — {qty} dona',
+  'ws.sub': '📦 Jami: {qty} dona',
+  'ws.compare': "↔️ O'tgan hafta shu davrda: {prev} dona. Bu hafta: {cur} dona. {diff}",
+  'ws.up': "▲ ko'proq: {n} dona",
+  'ws.down': '▼ kamroq: {n} dona',
+  'ws.same': "o'zgarishsiz",
   'stats.fix': '✏️ Bugungi yozuvlarni tuzatish',
 
   'edit.title': '✏️ Hali tuzatish mumkin bo‘lgan bugungi yozuvlar:',
   'edit.none':
     "⚠️ Bugun tuzatish mumkin bo'lgan yozuvlar yo'q. Faqat o'zingizning bugungi yozuvlaringizni, usta tasdiqlamaguncha tuzatish mumkin.",
-  'edit.card': '{label}\n{qty} dona × {rate} = 💰 <b>{total}</b>\nNima qilamiz?',
+  'edit.card': '{label}\n{qty} dona\nNima qilamiz?',
   'edit.btnQty': "✏️ Sonini o'zgartirish",
   'edit.btnDel': "🗑 O'chirish",
   'edit.askQty': "«{label}» uchun yangi son (hozir {qty} dona). Butun son yozing.",
-  'edit.updated': '✅ Tuzatildi: {label}\n{qty} dona × {rate} = 💰 <b>{total}</b>',
+  'edit.updated': '✅ Tuzatildi: {label}\n{qty} dona',
   'edit.confirmDel': "«{label}» yozuvini, {qty} donani o'chiramizmi?",
   'edit.yesDel': "🗑 Ha, o'chirish",
   'edit.no': "❌ Yo'q",
@@ -541,9 +545,9 @@ const uz: Record<MessageKey, string> = {
   'c.alreadyDecided': '⚠️ Bu yozuv allaqachon ko‘rib chiqilgan.',
   'c.notFound': "⚠️ Yozuv topilmadi — ehtimol, o'chirilgan.",
 
-  'wn.adjusted': "✏️ Usta yozuvingizni o'zgartirdi va tasdiqladi:\n{label}\n{old} → {qty} dona × {rate} = 💰 <b>{sum}</b>\n📅 {date}",
+  'wn.adjusted': "✏️ Usta yozuvingizni o'zgartirdi va tasdiqladi:\n{label}\n{old} → {qty} dona\n📅 {date}",
   'wn.rejected': '🚫 Usta yozuvingizni rad etdi:\n{label}, {qty} dona\n📅 {date}\nSabab: {reason}',
-  'wn.edited': "✏️ Usta yozuvingizni tuzatdi:\nEdi: {oldLabel}, {oldQty} dona\nBo'ldi: {label}, {qty} dona × {rate} = 💰 <b>{sum}</b>\n📅 {date}",
+  'wn.edited': "✏️ Usta yozuvingizni tuzatdi:\nEdi: {oldLabel}, {oldQty} dona\nBo'ldi: {label}, {qty} dona\n📅 {date}",
   'wn.deleted': "🗑 Usta yozuvingizni o'chirdi:\n{label}, {qty} dona\n📅 {date}",
 
   'u.title': '👷 <b>Ishchilar</b> — {shop}',
@@ -745,7 +749,7 @@ const uz: Record<MessageKey, string> = {
   'bc.header': '📣 <b>Ustadan xabar</b>\n\n{text}',
   'rm.worker': "🔔 Bugun hali hech narsa kiritmadingiz. Usta ishingizni tasdiqlashi uchun «➕ Ish qo'shish» tugmasini bosing.",
   'rm.master': '🔔 Tasdiqlashni kutmoqda: yozuvlar {count}. «✅ Tasdiqlash» ni oching.',
-  'rate.line': "🏅 Reytingdagi o'rningiz ({profession}): {total} tadan {place}-o'rin",
+  'rank.line': "🏅 Dona bo'yicha reyting ({profession}): {participants} tadan {place}-o'rin",
   'day.1': 'Du',
   'day.2': 'Se',
   'day.3': 'Chor',
@@ -765,6 +769,11 @@ export function t(lang: Lang, key: MessageKey, params: Params = {}): string {
   });
 }
 
+// Исходный текст сообщения (с «{параметрами}») — для тестов, которые ищут деньги в шаблонах.
+export function rawTemplate(lang: Lang, key: MessageKey): string {
+  return DICTS[lang][key];
+}
+
 // Сообщение сразу на двух языках — когда язык ещё не выбран.
 export function both(key: MessageKey, params: Params = {}): string {
   return `${t('ru', key, params)}\n${t('uz', key, params)}`;
@@ -780,4 +789,16 @@ export function money(value: number, lang: Lang): string {
   const sign = n < 0 ? '-' : '';
   const digits = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return `${sign}${digits} ${t(lang, 'currency')}`;
+}
+
+// Ключи сообщений, которые видит РАБОТНИК. В них нет денег (ни «сум», ни ставок, ни сумм):
+// это проверяет тест test053.mts — при добавлении нового сообщения работнику его нужно
+// добавить сюда (а префикс «ws.», «w.», «wn.», «menu.», «add.», «edit.» попадает в проверку сам).
+export const WORKER_KEY_PREFIXES = ['lang.', 'btn.', 'err.', 'w.', 'wn.', 'ws.', 'menu.', 'add.', 'edit.', 'rm.worker', 'rank.line', 'bc.header', 'stats.', 'pcs'];
+// Из «stats.*» деньги есть только в сообщениях мастера (отчёт по человеку).
+export const WORKER_KEY_EXCLUDE = ['stats.item', 'stats.sub'];
+export function workerKeys(): MessageKey[] {
+  return (Object.keys(ru) as MessageKey[]).filter(
+    (k) => WORKER_KEY_PREFIXES.some((p) => k === p || k.startsWith(p.endsWith('.') ? p : `${p}.`)) && !WORKER_KEY_EXCLUDE.includes(k)
+  );
 }

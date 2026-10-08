@@ -15,8 +15,8 @@ import {
   type WorkerInfo,
   type WorkRec,
 } from './db';
-import { isLang, type Lang, type MessageKey, money, t, both } from './i18n';
-import { displayLabel, fmtDate, formatStats, type Period, rangeFor, tashkentToday } from './stats';
+import { isLang, type Lang, type MessageKey, t, both } from './i18n';
+import { displayLabel, fmtDate, formatWorkerStats, type Period, rangeFor, tashkentToday } from './stats';
 import { notifyWorkerDecision, workerMenu } from './notify';
 import { onStaffCallback, onStaffText, showStaffMenu } from './staff';
 
@@ -209,7 +209,7 @@ async function startAdd(sb: SupabaseClient, tg: number, chatId: number, lang: La
 
   const cat = await loadCatalog(sb, tg);
   if (cat.no_profession) return void (await send(t(lang, 'add.noProfession')));
-  const wholeModels = cat.models.filter((m) => Number(m.whole_rate) > 0);
+  const wholeModels = cat.models.filter((m) => m.has_whole);
   const opModels = cat.models.filter((m) => m.ops.length > 0);
   if (wholeModels.length === 0 && opModels.length === 0) return void (await send(t(lang, 'add.emptyCatalog')));
 
@@ -231,11 +231,11 @@ async function showModels(
   send: (text: string, buttons?: InlineButton[][]) => Promise<unknown>,
   cat: BotCatalog
 ) {
-  const models = mode === 'w' ? cat.models.filter((m) => Number(m.whole_rate) > 0) : cat.models.filter((m) => m.ops.length > 0);
+  const models = mode === 'w' ? cat.models.filter((m) => m.has_whole) : cat.models.filter((m) => m.ops.length > 0);
   await setState(sb, tg, 'add', { mode });
   await send(t(lang, 'add.pickModel'), [
     ...models.slice(0, 80).map((m) => [
-      { text: mode === 'w' ? `${m.name} — ${money(Number(m.whole_rate), lang)}` : m.name, callback_data: `m:${m.id}` },
+      { text: m.name, callback_data: `m:${m.id}` },
     ]),
     cancelRow(lang),
   ]);
@@ -252,18 +252,18 @@ async function onModel(sb: SupabaseClient, tg: number, chatId: number, messageId
   if (!mode) return void (await sendMessage(chatId, t(lang, 'err.stale')));
   const cat = await loadCatalog(sb, tg);
   const model: CatalogModel | undefined = cat.models.find((m) => m.id === modelId);
-  if (!model || (mode === 'w' && !(Number(model.whole_rate) > 0)) || (mode === 'o' && model.ops.length === 0)) {
+  if (!model || (mode === 'w' && !model.has_whole) || (mode === 'o' && model.ops.length === 0)) {
     return void (await editMessage(chatId, messageId, t(lang, 'add.gone')));
   }
   if (mode === 'w') {
     const label = `${model.name} (${t(lang, 'add.wholeSuffix')})`;
-    await setState(sb, tg, 'qty', { kind: 'whole', id: model.id, label, rate: Number(model.whole_rate) });
+    await setState(sb, tg, 'qty', { kind: 'whole', id: model.id, label });
     await editMessage(chatId, messageId, t(lang, 'add.askQty', { label }), [cancelRow(lang)]);
     return;
   }
   await setState(sb, tg, 'add', { mode, modelId: model.id });
   await editMessage(chatId, messageId, t(lang, 'add.pickOp', { model: model.name }), [
-    ...model.ops.slice(0, 80).map((o) => [{ text: `${o.name} — ${money(Number(o.rate), lang)}`, callback_data: `o:${o.id}` }]),
+    ...model.ops.slice(0, 80).map((o) => [{ text: o.name, callback_data: `o:${o.id}` }]),
     cancelRow(lang),
   ]);
 }
@@ -277,22 +277,19 @@ async function onOperation(sb: SupabaseClient, tg: number, chatId: number, messa
   const op = model?.ops.find((o) => o.id === opId);
   if (!model || !op) return void (await editMessage(chatId, messageId, t(lang, 'add.gone')));
   const label = `${model.name} · ${op.name}`;
-  await setState(sb, tg, 'qty', { kind: 'op', id: op.id, label, rate: Number(op.rate) });
+  await setState(sb, tg, 'qty', { kind: 'op', id: op.id, label });
   await editMessage(chatId, messageId, t(lang, 'add.askQty', { label }), [cancelRow(lang)]);
 }
 
 async function onQuantity(sb: SupabaseClient, tg: number, chatId: number, lang: Lang, data: Record<string, unknown>, text: string) {
   const qty = QTY_PATTERN.test(text) ? Number(text) : 0;
   if (qty < 1 || qty > 99999) return void (await sendMessage(chatId, t(lang, 'add.badQty')));
-  const rate = Number(data.rate);
   await setState(sb, tg, 'review', { ...data, quantity: qty });
   await sendMessage(
     chatId,
     t(lang, 'add.review', {
       label: String(data.label),
       qty,
-      rate: money(rate, lang),
-      total: money(qty * rate, lang),
       date: fmtDate(tashkentToday()),
     }),
     inline([[{ text: t(lang, 'add.confirm'), callback_data: 'ok' }, { text: t(lang, 'btn.cancel'), callback_data: 'no' }]])
@@ -301,15 +298,13 @@ async function onQuantity(sb: SupabaseClient, tg: number, chatId: number, lang: 
 
 async function onConfirm(sb: SupabaseClient, tg: number, chatId: number, messageId: number, lang: Lang) {
   try {
-    const res = await rpc<{ label: string; is_whole: boolean; quantity: number; rate: number; total: number }>(sb, 'bot_commit_draft', { p_tg: tg });
+    const res = await rpc<{ label: string; is_whole: boolean; quantity: number }>(sb, 'bot_commit_draft', { p_tg: tg });
     await editMessage(
       chatId,
       messageId,
       t(lang, 'add.saved', {
         label: displayLabel(res.label, res.is_whole, lang),
         qty: res.quantity,
-        rate: money(Number(res.rate), lang),
-        total: money(Number(res.total), lang),
       }),
       [[{ text: t(lang, 'add.again'), callback_data: 'more' }, { text: t(lang, 'add.fix'), callback_data: 'fix' }]]
     );
@@ -352,23 +347,17 @@ async function onStats(sb: SupabaseClient, tg: number, chatId: number, messageId
   const range = rangeFor(period, today);
   const recs = await records(sb, tg, range.from, range.to);
   const prev = range.prevFrom && range.prevTo ? await records(sb, tg, range.prevFrom, range.prevTo) : null;
-  const text = formatStats(
-    period,
-    range,
-    recs.map((r) => ({ ...r, label: r.label })),
-    prev,
-    lang
-  );
+  const text = formatWorkerStats(period, range, recs, prev, lang);
   let extra = '';
   if (period === 'w' || period === 'm') {
     // 🏅 Рейтинг внутри профессии — только если включён мастером; без имён и сумм других.
     try {
-      const rating = await rpc<{ place: number; total: number; profession_name: string } | null>(sb, 'bot_rating', {
+      const rating = await rpc<{ place: number; participants: number; profession_name: string } | null>(sb, 'bot_rating', {
         p_tg: tg,
         p_from: range.from,
         p_to: range.to,
       });
-      if (rating) extra = `\n\n${t(lang, 'rate.line', { profession: rating.profession_name, place: rating.place, total: rating.total })}`;
+      if (rating) extra = `\n\n${t(lang, 'rank.line', { profession: rating.profession_name, place: rating.place, participants: rating.participants })}`;
     } catch (err) {
       console.error('worker bot rating failed', err);
     }
@@ -407,8 +396,6 @@ async function onRecordCard(sb: SupabaseClient, tg: number, chatId: number, mess
     t(lang, 'edit.card', {
       label: displayLabel(r.label, r.is_whole, lang),
       qty: r.quantity,
-      rate: money(Number(r.rate), lang),
-      total: money(Number(r.total), lang),
     }),
     [
       [{ text: t(lang, 'edit.btnQty'), callback_data: `eq:${r.id}` }, { text: t(lang, 'edit.btnDel'), callback_data: `ed:${r.id}` }],
@@ -429,7 +416,7 @@ async function onEditQuantity(sb: SupabaseClient, tg: number, chatId: number, la
   const qty = QTY_PATTERN.test(text) ? Number(text) : 0;
   if (qty < 1 || qty > 99999) return void (await sendMessage(chatId, t(lang, 'add.badQty')));
   try {
-    const res = await rpc<{ label: string; quantity: number; rate: number; total: number }>(sb, 'bot_change_qty', {
+    const res = await rpc<{ label: string; quantity: number }>(sb, 'bot_change_qty', {
       p_tg: tg,
       p_record_id: String(data.id),
       p_qty: qty,
@@ -440,8 +427,6 @@ async function onEditQuantity(sb: SupabaseClient, tg: number, chatId: number, la
       t(lang, 'edit.updated', {
         label: String(data.label),
         qty: res.quantity,
-        rate: money(Number(res.rate), lang),
-        total: money(Number(res.total), lang),
       }),
       inline([[{ text: t(lang, 'add.fix'), callback_data: 'fix' }]])
     );

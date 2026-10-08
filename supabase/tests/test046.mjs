@@ -245,13 +245,13 @@ async function main() {
   const modelNames = cat.models.map((m) => m.name).sort();
   check('каталог работника — только его профессия (Швея): Футболка, Майка; без «Глажка куртки» и скрытых', modelNames.join() === 'Майка,Футболка', modelNames.join());
   const tshirt = cat.models.find((m) => m.name === 'Футболка');
-  check('в каталоге нет операций со ставкой 0 и скрытых; цена целиком видна', tshirt.ops.map((o) => o.name).join() === 'Оверлок' && Number(tshirt.whole_rate) === 1500, JSON.stringify(tshirt));
+  check('в каталоге нет операций со ставкой 0 и скрытых; о целом изделии — только признак has_whole (цены нет)', tshirt.ops.map((o) => o.name).join() === 'Оверлок' && tshirt.has_whole === true && !('whole_rate' in tshirt) && tshirt.ops.every((o) => !('rate' in o)), JSON.stringify(tshirt));
   check('второй работник той же профессии (Швея) видит тот же каталог', (await call(db, 'bot_catalog', [2002])).models.length === 2);
 
   const setDraft = (tg, data) => admin(db, `insert into worker_bot_state (telegram_id, state, data) values ($1, 'review', $2::jsonb) on conflict (telegram_id) do update set state = 'review', data = excluded.data`, [tg, JSON.stringify(data)]);
   await setDraft(wA, { kind: 'op', id: oOver, quantity: 10 });
   const saved = await call(db, 'bot_commit_draft', [wA]);
-  check('подтверждение: запись 10 × 120 = 1200, метка «Футболка · Оверлок»', saved.quantity === 10 && Number(saved.rate) === 120 && Number(saved.total) === 1200 && saved.label === 'Футболка · Оверлок', JSON.stringify(saved));
+  check('подтверждение: запись 10 шт, метка «Футболка · Оверлок», в ответе нет ставки и суммы; в базе ставка записи 120', saved.quantity === 10 && saved.label === 'Футболка · Оверлок' && !('rate' in saved) && !('total' in saved) && Number((await admin(db, `select rate_per_piece from work_records where id = $1`, [saved.id])).rows[0].rate_per_piece) === 120, JSON.stringify(saved));
   const recA = (await admin(db, `select *, date::text as d from work_records where id = $1`, [saved.id])).rows[0];
   check('запись бота: pending, source=bot, автор-работник, сотрудник привязан, сегодняшняя дата, created_by пусто', recA.status === 'pending' && recA.source === 'bot' && recA.bot_user_id === w1 && recA.employee_id === appr.employee_id && recA.created_by === null && recA.d === (await admin(db, `select public.tashkent_today()::text as d`)).rows[0].d, JSON.stringify(recA));
   check('повторное «Подтвердить»: дубля нет (черновик уже использован)', (await svcFails(db, `select public.bot_commit_draft($1)`, [wA], /no_draft/)) && (await admin(db, `select count(*)::int as n from work_records where bot_user_id = $1`, [w1])).rows[0].n === 1);
@@ -263,7 +263,7 @@ async function main() {
 
   await setDraft(wA, { kind: 'whole', id: mT, quantity: 3 });
   const savedWhole = await call(db, 'bot_commit_draft', [wA]);
-  check('целое изделие: 3 × 1500 = 4500', savedWhole.is_whole === true && Number(savedWhole.total) === 4500 && savedWhole.label === 'Футболка (целиком)');
+  check('целое изделие: 3 шт; в ответе денег нет, в базе ставка записи 1500', savedWhole.is_whole === true && savedWhole.label === 'Футболка (целиком)' && !('rate' in savedWhole) && !('total' in savedWhole) && Number((await admin(db, `select rate_per_piece from work_records where id = $1`, [savedWhole.id])).rows[0].rate_per_piece) === 1500);
 
   const reject = async (data, re) => {
     await setDraft(wA, data);
@@ -296,7 +296,7 @@ async function main() {
   check('в записях работника нет чужих имён и чужих сумм (только свои поля)', listA.every((r) => !('employee_name' in r)));
 
   const ch = await call(db, 'bot_change_qty', [wA, saved.id, 12]);
-  check('исправление количества своей сегодняшней pending-записи: 12 × 120 = 1440, ставка прежняя', ch.quantity === 12 && Number(ch.total) === 1440);
+  check('исправление количества своей сегодняшней pending-записи: 12, ответ без денег, ставка записи в базе прежняя (120)', ch.quantity === 12 && !('rate' in ch) && !('total' in ch) && Number((await admin(db, `select rate_per_piece from work_records where id = $1`, [saved.id])).rows[0].rate_per_piece) === 120);
   check('нулевое/дробное количество при исправлении отклонено', (await svcFails(db, `select public.bot_change_qty($1, $2, 0)`, [wA, saved.id], /invalid_quantity/)) && (await svcFails(db, `select public.bot_change_qty($1, $2, 2.5)`, [wA, saved.id], /invalid_quantity/)));
   check('чужую запись (Бахтиёра) править и удалять нельзя', (await svcFails(db, `select public.bot_change_qty($1, $2, 5)`, [wA, savedB.id], /not_editable/)) && (await svcFails(db, `select public.bot_delete_record($1, $2)`, [wA, savedB.id], /not_editable/)));
   const siteRec = listB.find((r) => r.status === 'confirmed').id;

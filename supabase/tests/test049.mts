@@ -74,7 +74,7 @@ let m = mark();
 await say(MASTER, '8');
 check('мастеру: «Изменено и подтверждено: 10 → 8»', since(m, MASTER).some((s) => s.text.includes('10 → 8')));
 const wMsg = since(m, W1).at(-1)!;
-check('работнику пришло сообщение: мастер изменил количество, 8 × 120 = 960', wMsg && wMsg.text.includes('изменил вашу запись') && wMsg.text.includes('10 → 8 шт') && wMsg.text.includes('960 сум'), wMsg?.text);
+check('работнику пришло сообщение: мастер изменил количество (10 → 8 шт), без ставки и суммы', wMsg && wMsg.text.includes('изменил вашу запись') && wMsg.text.includes('10 → 8 шт') && !/сум|💰|×/.test(wMsg.text), wMsg?.text);
 check('в базе: confirmed, 8, исходное 10', await (async () => { const r = (await db.query(`select status, quantity, quantity_original from work_records where id = $1`, [r1])).rows[0]; return r.status === 'confirmed' && r.quantity === 8 && r.quantity_original === 10; })());
 check('после действия показан обновлённый список дня', since(m, MASTER).some((s) => s.text.includes('Подтверждение') && s.text.includes('Алишер')));
 check('клавиатура мастера освежена: счётчик стал 3', since(m, MASTER).some((s) => s.reply.includes('✅ Подтверждение (3)')), JSON.stringify(since(m, MASTER).map((s) => s.reply)));

@@ -37,25 +37,6 @@ export function rangeFor(period: Period, today: string): Range {
   return { from, to: today, prevFrom: addDays(from, -7), prevTo: addDays(today, -7) };
 }
 
-interface Group {
-  label: string;
-  rate: number;
-  qty: number;
-  sum: number;
-}
-
-function group(recs: WorkRec[]): Group[] {
-  const map = new Map<string, Group>();
-  for (const r of recs) {
-    const key = `${r.label}|${r.rate}`;
-    const g = map.get(key) ?? { label: r.label, rate: Number(r.rate), qty: 0, sum: 0 };
-    g.qty += Number(r.quantity);
-    g.sum += Number(r.total);
-    map.set(key, g);
-  }
-  return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, 'ru'));
-}
-
 const WHOLE_SUFFIX = / \(целиком\)$/;
 
 function wholeLabel(label: string, lang: Lang): string {
@@ -70,35 +51,35 @@ export function displayLabel(label: string, isWhole: boolean, lang: Lang): strin
 
 const MAX_LINES = 25;
 
-function section(recs: WorkRec[], lang: Lang): string[] {
+// Запись работника для статистики: только название, штуки и статус — денег нет.
+export interface WorkerRec {
+  label: string;
+  is_whole: boolean;
+  quantity: number;
+  status: 'pending' | 'confirmed' | 'rejected';
+}
+
+function pieceSection(recs: WorkerRec[], lang: Lang): string[] {
   const lines: string[] = [];
-  const ops = recs.filter((r) => !r.is_whole);
-  const whole = recs.filter((r) => r.is_whole);
-  const render = (title: string, list: WorkRec[], isWhole: boolean) => {
+  const render = (title: 'stats.ops' | 'stats.whole', list: WorkerRec[], isWhole: boolean) => {
     if (list.length === 0) return;
-    lines.push(t(lang, title === 'ops' ? 'stats.ops' : 'stats.whole'));
-    const groups = group(list);
-    groups.slice(0, MAX_LINES).forEach((g) =>
-      lines.push(
-        t(lang, 'stats.item', {
-          label: isWhole ? g.label.replace(WHOLE_SUFFIX, '') : g.label,
-          qty: g.qty,
-          rate: money(g.rate, lang),
-          sum: money(g.sum, lang),
-        })
-      )
+    lines.push(t(lang, title));
+    const map = new Map<string, number>();
+    list.forEach((r) => map.set(r.label, (map.get(r.label) ?? 0) + Number(r.quantity)));
+    const groups = Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0], 'ru'));
+    groups.slice(0, MAX_LINES).forEach(([label, qty]) =>
+      lines.push(t(lang, 'ws.item', { label: isWhole ? label.replace(WHOLE_SUFFIX, '') : label, qty }))
     );
     if (groups.length > MAX_LINES) lines.push(`… +${groups.length - MAX_LINES}`);
   };
-  render('ops', ops, false);
-  render('whole', whole, true);
-  const qty = recs.reduce((s, r) => s + Number(r.quantity), 0);
-  const sum = recs.reduce((s, r) => s + Number(r.total), 0);
-  lines.push(t(lang, 'stats.sub', { qty, sum: money(sum, lang) }));
+  render('stats.ops', recs.filter((r) => !r.is_whole), false);
+  render('stats.whole', recs.filter((r) => r.is_whole), true);
+  lines.push(t(lang, 'ws.sub', { qty: recs.reduce((s, r) => s + Number(r.quantity), 0) }));
   return lines;
 }
 
-export function formatStats(period: Period, range: Range, recs: WorkRec[], prevRecs: WorkRec[] | null, lang: Lang): string {
+// Статистика работника: подтверждённое и ожидающее — отдельно, только штуки.
+export function formatWorkerStats(period: Period, range: Range, recs: WorkerRec[], prevRecs: WorkerRec[] | null, lang: Lang): string {
   const title =
     period === 'd'
       ? t(lang, 'stats.titleDay', { date: fmtDate(range.to) })
@@ -113,22 +94,18 @@ export function formatStats(period: Period, range: Range, recs: WorkRec[], prevR
   if (visible.length === 0) {
     out.push(t(lang, 'stats.empty'));
   } else {
-    if (confirmed.length > 0) {
-      out.push(t(lang, 'stats.confirmed'), ...section(confirmed, lang), '');
-    }
-    if (pending.length > 0) {
-      out.push(t(lang, 'stats.pending'), ...section(pending, lang), '');
-    }
+    if (confirmed.length > 0) out.push(t(lang, 'stats.confirmed'), ...pieceSection(confirmed, lang), '');
+    if (pending.length > 0) out.push(t(lang, 'stats.pending'), ...pieceSection(pending, lang), '');
   }
   if (rejected > 0) out.push(t(lang, 'stats.rejected', { n: rejected }));
 
   if (prevRecs) {
-    const total = (list: WorkRec[]) => list.filter((r) => r.status !== 'rejected').reduce((s, r) => s + Number(r.total), 0);
+    const total = (list: WorkerRec[]) => list.filter((r) => r.status !== 'rejected').reduce((s, r) => s + Number(r.quantity), 0);
     const cur = total(recs);
     const prev = total(prevRecs);
-    const diffN = Math.round(cur - prev);
-    const diff = diffN === 0 ? t(lang, 'stats.same') : t(lang, diffN > 0 ? 'stats.up' : 'stats.down', { n: money(Math.abs(diffN), lang) });
-    out.push('', t(lang, 'stats.compare', { prev: money(prev, lang), cur: money(cur, lang), diff }));
+    const diffN = cur - prev;
+    const diff = diffN === 0 ? t(lang, 'ws.same') : t(lang, diffN > 0 ? 'ws.up' : 'ws.down', { n: Math.abs(diffN) });
+    out.push('', t(lang, 'ws.compare', { prev, cur, diff }));
   }
 
   let text = out.join('\n').trim();

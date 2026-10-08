@@ -1,5 +1,5 @@
 import { replyKeyboard, sendMessage } from './api';
-import { isLang, type Lang, money, t } from './i18n';
+import { isLang, type Lang, t } from './i18n';
 import { displayLabel, fmtDate } from './stats';
 
 // Сообщения работнику о решениях мастера по его записям. Данные приходят из
@@ -17,8 +17,6 @@ export interface RecordChange {
   old_quantity?: number;
   old_label?: string;
   old_is_whole?: boolean;
-  rate?: number;
-  total?: number;
   date: string;
   reason?: string;
   changed?: boolean;
@@ -34,11 +32,9 @@ export async function notifyWorkerRecord(
   const label = displayLabel(d.label, d.is_whole, lang);
   const date = fmtDate(String(d.date).slice(0, 10));
   const qty = Number(d.quantity);
-  const rate = money(Number(d.rate ?? 0), lang);
-  const sum = money(Number(d.total ?? 0), lang);
 
   if (kind === 'adjusted') {
-    return sendMessage(target.chat_id, t(lang, 'wn.adjusted', { label, old: Number(d.old_quantity), qty, rate, sum, date }));
+    return sendMessage(target.chat_id, t(lang, 'wn.adjusted', { label, old: Number(d.old_quantity), qty, date }));
   }
   if (kind === 'rejected') {
     return sendMessage(target.chat_id, t(lang, 'wn.rejected', { label, qty, date, reason: d.reason ?? '' }));
@@ -52,8 +48,6 @@ export async function notifyWorkerRecord(
         oldQty: Number(d.old_quantity),
         label,
         qty,
-        rate,
-        sum,
         date,
       })
     );
