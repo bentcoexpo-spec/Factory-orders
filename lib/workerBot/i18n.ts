@@ -143,7 +143,7 @@ const ru = {
   'sm.reports': '📊 Отчёты',
   'sm.settings': '⚙️ Настройки',
   'sm.confirm': '✅ Подтверждение',
-  'sm.title': '🏭 <b>Главное меню</b> — {shop}',
+  'sm.title': '<b>Главное меню</b> — {shop}',
   'sm.switchShop': '🏭 Сменить цех',
   'sm.soon': '⚠️ Этот раздел появится в следующем обновлении.',
   'sm.noShop': '⚠️ Не выбран цех. Выберите цех на сайте (у мастера — «Выбор цеха», у директора — в боте).',
@@ -394,6 +394,20 @@ const ru = {
   'day.5': 'Пт',
   'day.6': 'Сб',
   'day.7': 'Вс',
+  // --- переключение цеха и уведомления мастеру о новых записях
+  'sm.shopFactory': '🏭 Цех: Фабрика',
+  'sm.shopWorkshop': '🧵 Цех: Цех',
+  'sm.shopNone': '🏭 Выбрать цех',
+  'sm.shopSwitched': '✅ Выбран цех: {tag}. На сайте он тоже переключился.',
+  'sm.shopSwitchedCeo': '✅ Выбран цех: {tag}.',
+  'shop.tag.factory': '🏭 Фабрика',
+  'shop.tag.workshop': '🧵 Цех',
+  'nt.new': '🔔 <b>Новая запись</b> · {tag}\n👷 {name}\n{label}\n{qty} шт × {rate} = 💰 <b>{sum}</b>\n📅 {date}',
+  'nt.confirmed': '✅ Подтверждено · {tag}\n👷 {name}\n{label}, {qty} шт',
+  'nt.adjusted': '✅ Изменено и подтверждено · {tag}\n👷 {name}\n{label}, {old} → {qty} шт',
+  'nt.rejected': '🚫 Отклонено · {tag}\n👷 {name}\n{label}, {qty} шт\nПричина: {reason}',
+  'nt.gone': '⚠️ Эта запись уже обработана или удалена.',
+  'nt.askQty': '✏️ Напишите новое количество (целое число) — запись будет подтверждена с ним.',
 } as const;
 
 export type MessageKey = keyof typeof ru;
@@ -515,7 +529,7 @@ const uz: Record<MessageKey, string> = {
   'sm.reports': '📊 Hisobotlar',
   'sm.settings': '⚙️ Sozlamalar',
   'sm.confirm': '✅ Tasdiqlash',
-  'sm.title': '🏭 <b>Asosiy menyu</b> — {shop}',
+  'sm.title': '<b>Asosiy menyu</b> — {shop}',
   'sm.switchShop': '🏭 Sexni almashtirish',
   'sm.soon': "⚠️ Bu bo'lim keyingi yangilanishda paydo bo'ladi.",
   'sm.noShop': "⚠️ Sex tanlanmagan. Saytda (ustada «Sex tanlash», direktorda — botda) sexni tanlang.",
@@ -757,6 +771,19 @@ const uz: Record<MessageKey, string> = {
   'day.5': 'Ju',
   'day.6': 'Sha',
   'day.7': 'Yak',
+  'sm.shopFactory': '🏭 Sex: Fabrika',
+  'sm.shopWorkshop': '🧵 Sex: Sex',
+  'sm.shopNone': '🏭 Sexni tanlash',
+  'sm.shopSwitched': '✅ Sex tanlandi: {tag}. Saytda ham almashdi.',
+  'sm.shopSwitchedCeo': '✅ Sex tanlandi: {tag}.',
+  'shop.tag.factory': '🏭 Fabrika',
+  'shop.tag.workshop': '🧵 Sex',
+  'nt.new': '🔔 <b>Yangi yozuv</b> · {tag}\n👷 {name}\n{label}\n{qty} dona × {rate} = 💰 <b>{sum}</b>\n📅 {date}',
+  'nt.confirmed': '✅ Tasdiqlandi · {tag}\n👷 {name}\n{label}, {qty} dona',
+  'nt.adjusted': "✅ O'zgartirildi va tasdiqlandi · {tag}\n👷 {name}\n{label}, {old} → {qty} dona",
+  'nt.rejected': '🚫 Rad etildi · {tag}\n👷 {name}\n{label}, {qty} dona\nSabab: {reason}',
+  'nt.gone': "⚠️ Bu yozuv allaqachon ko'rib chiqilgan yoki o'chirilgan.",
+  'nt.askQty': "✏️ Yangi sonni yozing (butun son) — yozuv shu bilan tasdiqlanadi.",
 };
 
 const DICTS: Record<Lang, Record<MessageKey, string>> = { ru, uz };

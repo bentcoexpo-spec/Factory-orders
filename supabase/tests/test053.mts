@@ -26,9 +26,19 @@ for (const lang of ['ru', 'uz'] as const) {
 check('ни один текст работника (ru и uz) не содержит денег и «денежных» параметров', bad.length === 0, bad.join(', '));
 check('у работника НЕ используются сообщения с деньгами мастера (stats.item, stats.sub, currency)', !keys.includes('stats.item' as any) && !keys.includes('stats.sub' as any) && !keys.includes('currency' as any));
 
+
+// Точный вид экранов работника (ru): только «модель · операция», штуки и дата — без единой цифры про деньги, даже «0».
+const L = 'Футболка · Оверлок';
+check('«Проверьте запись»: модель · операция, 150 шт, дата — и больше ничего', i18n.t('ru', 'add.review', { label: L, qty: 150, date: '08.10.2026' }) === '📋 Проверьте запись:\nФутболка · Оверлок\n150 шт\n📅 08.10.2026');
+check('«Сохранено»: модель · операция, 150 шт и пометка про подтверждение мастером', i18n.t('ru', 'add.saved', { label: L, qty: 150 }) === '✅ Сохранено\nФутболка · Оверлок\n150 шт\n⏳ Мастер ещё должен подтвердить запись.');
+check('уведомление «изменил и подтвердил»: было → стало, штуки, дата', i18n.t('ru', 'wn.adjusted', { label: L, old: 150, qty: 120, date: '08.10.2026' }) === '✏️ Мастер изменил вашу запись и подтвердил её:\nФутболка · Оверлок\n150 → 120 шт\n📅 08.10.2026');
+check('уведомление «исправил»: было/стало в штуках', i18n.t('ru', 'wn.edited', { oldLabel: L, oldQty: 150, label: L, qty: 100, date: '08.10.2026' }) === '✏️ Мастер исправил вашу запись:\nБыло: Футболка · Оверлок, 150 шт\nСтало: Футболка · Оверлок, 100 шт\n📅 08.10.2026');
+check('уведомления «отклонил» и «удалил»: название, штуки, дата, причина', i18n.t('ru', 'wn.rejected', { label: L, qty: 150, date: '08.10.2026', reason: 'Ошибка' }) === '🚫 Мастер отклонил вашу запись:\nФутболка · Оверлок, 150 шт\n📅 08.10.2026\nПричина: Ошибка' && i18n.t('ru', 'wn.deleted', { label: L, qty: 150, date: '08.10.2026' }) === '🗑 Мастер удалил вашу запись:\nФутболка · Оверлок, 150 шт\n📅 08.10.2026');
+check('те же экраны на узбекском — без денег', !MONEY.test(i18n.t('uz', 'add.review', { label: L, qty: 150, date: '08.10.2026' })) && !MONEY.test(i18n.t('uz', 'add.saved', { label: L, qty: 150 })) && !MONEY.test(i18n.t('uz', 'wn.adjusted', { label: L, old: 150, qty: 120, date: '08.10.2026' })));
+
 // ===================== 2. Функции работника в базе =====================
 const WORKER_FNS = ['bot_worker_get', 'bot_worker_begin', 'bot_worker_set_language', 'bot_worker_submit_name', 'bot_catalog', 'bot_commit_draft', 'bot_records', 'bot_change_qty', 'bot_delete_record', 'bot_rating'];
-const OTHER_FNS = ['bot_staff_link', 'bot_staff_resolve', 'bot_staff_set_language', 'bot_staff_set_shop', 'bot_staff_request', 'bot_decide_worker', 'bot_as_staff', 'bot_broadcast_result'];
+const OTHER_FNS = ['bot_staff_link', 'bot_staff_resolve', 'bot_staff_set_language', 'bot_staff_set_shop', 'bot_staff_request', 'bot_decide_worker', 'bot_as_staff', 'bot_broadcast_result', 'bot_record_notice'];
 const all = (await db.query(`select proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and proname like 'bot\\_%' order by proname`)).rows.map((r: any) => r.proname);
 check('список bot_*-функций известен тесту (новая функция потребует решения: работнику или мастеру)', JSON.stringify(all) === JSON.stringify([...WORKER_FNS, ...OTHER_FNS].sort()), JSON.stringify(all));
 

@@ -42,7 +42,7 @@ await asUser(db, 'master');
 // ===================== меню =====================
 await say(MASTER, '/start');
 const menu = last(MASTER);
-check('меню мастера: 4 кнопки + ✅ Подтверждение со счётчиком (4 ожидающих своего цеха)', menu.reply.join('|') === '📦 Изделия|👷 Работники|📊 Отчёты|⚙️ Настройки|✅ Подтверждение (4)', menu.reply.join('|'));
+check('меню мастера: 4 кнопки + ✅ Подтверждение со счётчиком (4 ожидающих своего цеха)', menu.reply.join('|') === '📦 Изделия|👷 Работники|📊 Отчёты|⚙️ Настройки|✅ Подтверждение (4)|🏭 Цех: Фабрика', menu.reply.join('|'));
 await say(MASTER, '📊 Отчёты');
 check('«Отчёты» открываются: выбор периода', last(MASTER).text.includes('Выберите период') && last(MASTER).buttons.includes('rp:d'));
 await say(MASTER, '⚙️ Настройки');
@@ -317,8 +317,8 @@ await press(MASTER, `km:${mT}`);
 // ===================== CEO =====================
 await say(CEO, '/menu');
 const ceoMsgs = since(0, CEO);
-check('CEO: меню на узбекском и переключатель цеха', ceoMsgs.some((s) => s.reply.includes('📦 Buyumlar') && s.reply.includes('👷 Ishchilar')) && ceoMsgs.some((s) => s.buttons.includes('sh:factory') && s.buttons.includes('sh:workshop')), JSON.stringify(ceoMsgs.map((s) => s.reply.concat(s.buttons))));
-await press(CEO, 'sh:workshop');
+check('CEO: меню на узбекском с кнопкой цеха', ceoMsgs.some((s) => s.reply.includes('📦 Buyumlar') && s.reply.includes('👷 Ishchilar') && s.reply.includes('🏭 Sex: Fabrika')), JSON.stringify(ceoMsgs.map((s) => s.reply)));
+await say(CEO, '🏭 Sex: Fabrika');
 check('CEO выбрал цех «Цех»: меню показывает 1 ожидающую запись', last(CEO).reply.includes('✅ Tasdiqlash (1)'), JSON.stringify(last(CEO)));
 await say(CEO, '✅ Tasdiqlash (1)');
 check('CEO видит ожидающие цеха «Цех» (на узбекском)', last(CEO).text.includes('Tasdiqlashni kutmoqda: 1'), last(CEO).text);

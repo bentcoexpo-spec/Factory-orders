@@ -48,6 +48,11 @@ async function say(c: Ctx, text: string, rows?: InlineButton[][]) {
   await sendMessage(c.chatId, text, rows ? inline(rows) : undefined);
 }
 
+// «🏭 Фабрика» / «🧵 Цех» — с значком цеха.
+function shopTagOf(c: Pick<Ctx, 'lang' | 'staff'>): string {
+  return c.staff.shop ? t(c.lang, `shop.tag.${c.staff.shop}`) : '—';
+}
+
 function shopLabel(c: Ctx): string {
   return c.staff.shop ? t(c.lang, `shop.${c.staff.shop}`) : '—';
 }
@@ -102,36 +107,34 @@ export async function staffKeyboard(c: Pick<Ctx, 'sb' | 'tg' | 'staff' | 'lang'>
     [t(c.lang, 'sm.catalog'), t(c.lang, 'sm.workers')],
     [t(c.lang, 'sm.reports'), t(c.lang, 'sm.settings')],
     [confirm],
+    [shopButtonLabel(c.lang, c.staff.shop)],
   ]);
 }
 
+// 🏭 Цех: Фабрика / 🧵 Цех: Цех — кнопка переключения цеха в нижнем меню.
+function shopButtonLabel(lang: Lang, shop: StaffInfo['shop']): string {
+  return t(lang, shop === 'factory' ? 'sm.shopFactory' : shop === 'workshop' ? 'sm.shopWorkshop' : 'sm.shopNone');
+}
+
+const shopTag = (lang: Lang, shop: 'factory' | 'workshop'): string => t(lang, `shop.tag.${shop}`);
+
 export async function showStaffMenu(sb: SupabaseClient, tg: number, chatId: number, staff: StaffInfo) {
   const c: Ctx = { sb, tg, chatId, staff, lang: staff.language };
-  const shop = c.staff.shop ? t(c.lang, `shop.${c.staff.shop}`) : '—';
-  await sendMessage(chatId, t(c.lang, 'sm.title', { shop }), await staffKeyboard(c));
-  if (staff.role === 'ceo') {
-    await sendMessage(
-      chatId,
-      t(c.lang, 'e.shopChanged', { shop }),
-      inline([
-        [
-          BTN(`${staff.shop === 'factory' ? '✅ ' : ''}${t(c.lang, 'shop.factory')}`, 'sh:factory'),
-          BTN(`${staff.shop === 'workshop' ? '✅ ' : ''}${t(c.lang, 'shop.workshop')}`, 'sh:workshop'),
-        ],
-      ])
-    );
-  }
+  await sendMessage(chatId, t(c.lang, 'sm.title', { shop: shopTagOf(c) }), await staffKeyboard(c));
   if (!staff.shop) await sendMessage(chatId, t(c.lang, 'sm.noShop'));
 }
 
 // Текст кнопки меню → раздел (на любом из двух языков).
-function menuAction(text: string): 'catalog' | 'workers' | 'reports' | 'settings' | 'confirm' | null {
+function menuAction(text: string): 'catalog' | 'workers' | 'reports' | 'settings' | 'confirm' | 'shop' | null {
   const keys = ['catalog', 'workers', 'reports', 'settings', 'confirm'] as const;
   for (const k of keys) {
     for (const l of ['ru', 'uz'] as const) {
       const label = t(l, `sm.${k}`);
       if (text === label || (k === 'confirm' && text.startsWith(`${label} (`))) return k;
     }
+  }
+  for (const l of ['ru', 'uz'] as const) {
+    if (text === t(l, 'sm.shopFactory') || text === t(l, 'sm.shopWorkshop') || text === t(l, 'sm.shopNone')) return 'shop';
   }
   return null;
 }
@@ -144,6 +147,7 @@ export async function onStaffText(sb: SupabaseClient, staff: StaffInfo, tg: numb
   const action = menuAction(text);
   if (action) {
     await clearState(sb, tg);
+    if (action === 'shop') return await switchShop(sb, tg, chatId, staff);
     if (!staff.shop) return void (await say(c, t(c.lang, 'sm.noShop')));
     try {
       if (action === 'reports') return await showReportPick(c);
@@ -202,6 +206,10 @@ async function onStaffInput(c: Ctx, state: string, d: Record<string, unknown>, t
       return timeDo(c, text);
     case 'g_bcast':
       return bcastPreview(c, text);
+    case 'n_adj':
+      return noticeAdjustDo(c, s('id'), s('mid'), text);
+    case 'n_rej':
+      return noticeRejectDo(c, s('id'), s('mid'), text);
     default:
       return showStaffMenu(c.sb, c.tg, c.chatId, c.staff);
   }
@@ -227,7 +235,7 @@ export async function onStaffCallback(
   const known = [
     'x', 'sh', 'cb', 'cd', 'ca', 'cw', 'cv', 'cr', 'cc', 'cq', 'cx',
     'ul', 'uc', 'un', 'us', 'ur', 'uq', 'ud', 'udy', 'up', 'upi', 'ux', 'uxy', 'ua', 'ui', 'uin',
-    'kp', 'km', 'ko', 'kom', 'kot', 'kmv', 'ka', 'kb', 'kbm', 'kbs', 'kao', 'kw', 'kr', 'kd', 'kdy', 'kor', 'kop', 'kod', 'kody', 'k0',
+    'nc', 'nq', 'nx', 'kp', 'km', 'ko', 'kom', 'kot', 'kmv', 'ka', 'kb', 'kbm', 'kbs', 'kao', 'kw', 'kr', 'kd', 'kdy', 'kor', 'kop', 'kod', 'kody', 'k0',
     'r0', 'rp', 'rt', 'rw', 'rx', 'rxs', 'rxp',
     'g0', 'gp', 'gpn', 'gpa', 'gpr', 'gpd', 'gpdy', 'gr', 'grt', 'grm', 'grs', 'grx', 'grd', 'gm', 'gmt', 'gk', 'gkt', 'gb', 'gbs',
   ];
@@ -244,16 +252,9 @@ export async function onStaffCallback(
         await editMessage(chatId, messageId, t(c.lang, 'e.cancelled'));
         return true;
       case 'sh': {
-        if (staff.role !== 'ceo' || (a !== 'factory' && a !== 'workshop')) return true;
-        await rpc<null>(sb, 'bot_staff_set_shop', { p_tg: tg, p_shop: a });
-        c.staff = { ...staff, shop: a };
-        await editMessage(chatId, messageId, t(c.lang, 'e.shopChanged', { shop: t(c.lang, `shop.${a}`) }), [
-          [
-            BTN(`${a === 'factory' ? '✅ ' : ''}${t(c.lang, 'shop.factory')}`, 'sh:factory'),
-            BTN(`${a === 'workshop' ? '✅ ' : ''}${t(c.lang, 'shop.workshop')}`, 'sh:workshop'),
-          ],
-        ]);
-        await sendMessage(chatId, t(c.lang, 'sm.title', { shop: t(c.lang, `shop.${a}`) }), await staffKeyboard({ ...c, staff: c.staff }));
+        // Кнопки старых сообщений: выбрать цех явно.
+        if (a !== 'factory' && a !== 'workshop') return true;
+        await applyShop(sb, tg, chatId, staff, a);
         return true;
       }
       // --- ✅ Подтверждение
@@ -303,6 +304,10 @@ export async function onStaffCallback(
       case 'kop': await opRateAsk(c, a); return true;
       case 'kod': await opDeleteAsk(c, a); return true;
       case 'kody': await opDeleteDo(c, a); return true;
+      // --- 🔔 действия из уведомления о новой записи (любой цех)
+      case 'nc': await noticeConfirm(c, a); return true;
+      case 'nq': await noticeAdjustAsk(c, a); return true;
+      case 'nx': await noticeRejectAsk(c, a); return true;
       // --- 📊 Отчёты
       case 'r0': await showReportPick(c); return true;
       case 'rp': await showReport(c, a as ReportPeriod); return true;
@@ -1540,4 +1545,123 @@ async function moveDo(c: Ctx, idx: string) {
   await out(c, t(c.lang, 'k.moved', { name: String(st.data.opName), profession: prof, model: model ?? '' }));
   // Возвращаем к исходной модели: следующую операцию можно переносить сразу.
   await showModel({ ...c, mid: undefined }, srcModel, move);
+}
+
+
+// ====================================================================
+// 🏭 Переключение цеха из меню
+// ====================================================================
+async function applyShop(sb: SupabaseClient, tg: number, chatId: number, staff: StaffInfo, shop: 'factory' | 'workshop') {
+  // Мастер: меняется profiles.current_shop — та же настройка, что на сайте. CEO: цех, выбранный в боте.
+  await rpc<null>(sb, 'bot_staff_set_shop', { p_tg: tg, p_shop: shop });
+  const fresh = await rpc<StaffInfo | null>(sb, 'bot_staff_resolve', { p_tg: tg });
+  const next: StaffInfo = fresh ?? { ...staff, shop };
+  await sendMessage(chatId, t(next.language, staff.role === 'master' ? 'sm.shopSwitched' : 'sm.shopSwitchedCeo', { tag: shopTag(next.language, shop) }));
+  await showStaffMenu(sb, tg, chatId, next);
+}
+
+async function switchShop(sb: SupabaseClient, tg: number, chatId: number, staff: StaffInfo) {
+  const next = staff.shop === 'factory' ? 'workshop' : 'factory';
+  await applyShop(sb, tg, chatId, staff, next);
+}
+
+// ====================================================================
+// 🔔 Уведомление мастеру о новой записи работника (из ОБОИХ цехов)
+// ====================================================================
+interface RecordNotice {
+  id: string;
+  date: string;
+  label: string;
+  is_whole: boolean;
+  quantity: number;
+  rate: number;
+  total: number;
+  employee_name: string;
+  shop: 'factory' | 'workshop';
+  recipients: { chat_id: number; language: Lang | null }[];
+}
+
+// Вызывается после того, как работник сохранил запись. Ошибки не мешают работнику.
+export async function notifyMastersOfRecord(sb: SupabaseClient, recordId: string): Promise<void> {
+  try {
+    const n = await rpc<RecordNotice | null>(sb, 'bot_record_notice', { p_record_id: recordId });
+    if (!n) return;
+    for (const r of n.recipients) {
+      const lang: Lang = r.language === 'uz' ? 'uz' : 'ru';
+      await sendMessage(
+        r.chat_id,
+        t(lang, 'nt.new', {
+          tag: shopTag(lang, n.shop),
+          name: n.employee_name,
+          label: displayLabel(n.label, n.is_whole, lang),
+          qty: n.quantity,
+          rate: money(Number(n.rate), lang),
+          sum: money(Number(n.total), lang),
+          date: fmtDate(String(n.date).slice(0, 10)),
+        }),
+        inline([
+          [BTN(t(lang, 'c.btnConfirm'), `nc:${n.id}`)],
+          [BTN(t(lang, 'c.btnQty'), `nq:${n.id}`), BTN(t(lang, 'c.btnReject'), `nx:${n.id}`)],
+        ])
+      );
+    }
+  } catch (err) {
+    console.error('worker bot: master notice failed', err);
+  }
+}
+
+interface NoticeItem {
+  label: string;
+  is_whole: boolean;
+  quantity: number;
+  employee_name: string;
+  shop: 'factory' | 'workshop';
+}
+
+async function noticeConfirm(c: Ctx, id: string) {
+  const res = await sdo<{ confirmed: number; items: NoticeItem[] }>(c, 'staff_confirm', { ids: [id], any_shop: true });
+  const it = res.items[0];
+  if (res.confirmed === 0 || !it) return out(c, t(c.lang, 'nt.gone'));
+  await out(c, t(c.lang, 'nt.confirmed', { tag: shopTag(c.lang, it.shop), name: it.employee_name, label: displayLabel(it.label, it.is_whole, c.lang), qty: it.quantity }));
+  await sendMessage(c.chatId, t(c.lang, 'sm.title', { shop: shopTagOf(c) }), await staffKeyboard(c));
+}
+
+async function noticeAdjustAsk(c: Ctx, id: string) {
+  await setState(c.sb, c.tg, 'n_adj', { id, mid: c.mid ?? 0 });
+  await say(c, t(c.lang, 'nt.askQty'), [CANCEL(c.lang)]);
+}
+
+async function noticeAdjustDo(c: Ctx, id: string, mid: string, text: string) {
+  const qty = /^\d{1,5}$/.test(text.trim()) ? Number(text.trim()) : 0;
+  if (qty < 1 || qty > 99999) return void (await say(c, t(c.lang, 'add.badQty')));
+  const res = await sdo<{ label: string; is_whole: boolean; old_quantity: number; quantity: number; employee_name: string; shop: 'factory' | 'workshop'; notify: NotifyTarget | null } & RecordChange>(
+    c,
+    'staff_adjust',
+    { id, quantity: qty, any_shop: true }
+  );
+  await clearState(c.sb, c.tg);
+  const done = t(c.lang, 'nt.adjusted', { tag: shopTag(c.lang, res.shop), name: res.employee_name, label: displayLabel(res.label, res.is_whole, c.lang), old: res.old_quantity, qty: res.quantity });
+  if (Number(mid) > 0) await editMessage(c.chatId, Number(mid), done, []);
+  await sendMessage(c.chatId, done, await staffKeyboard(c));
+  await notifyWorkerRecord('adjusted', res.notify, res);
+}
+
+async function noticeRejectAsk(c: Ctx, id: string) {
+  await setState(c.sb, c.tg, 'n_rej', { id, mid: c.mid ?? 0 });
+  await say(c, t(c.lang, 'c.askReason'), [CANCEL(c.lang)]);
+}
+
+async function noticeRejectDo(c: Ctx, id: string, mid: string, text: string) {
+  const reason = text.trim();
+  if (reason.length < 1 || reason.length > 200) return void (await say(c, t(c.lang, 'c.badReason')));
+  const res = await sdo<{ label: string; is_whole: boolean; quantity: number; employee_name: string; shop: 'factory' | 'workshop'; notify: NotifyTarget | null } & RecordChange>(
+    c,
+    'staff_reject',
+    { id, reason, any_shop: true }
+  );
+  await clearState(c.sb, c.tg);
+  const done = t(c.lang, 'nt.rejected', { tag: shopTag(c.lang, res.shop), name: res.employee_name, label: displayLabel(res.label, res.is_whole, c.lang), qty: res.quantity, reason });
+  if (Number(mid) > 0) await editMessage(c.chatId, Number(mid), done, []);
+  await sendMessage(c.chatId, done, await staffKeyboard(c));
+  await notifyWorkerRecord('rejected', res.notify, res);
 }

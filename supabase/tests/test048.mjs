@@ -310,9 +310,12 @@ async function main() {
   await db.query(`select public.bot_staff_set_shop(1001, 'workshop')`);
   await db.query('reset role');
   await as(db, 'master');
+  const svc2 = async (sql) => { await db.query('reset role'); await db.query('set role service_role'); try { return await db.query(sql); } finally { await db.query('reset role'); await as(db, current); } };
   const ceoW = await bot(db, 1002, 'staff_pending');
   check('CEO переключил цех в боте: видит «Цех» (1 ожидающая запись)', ceoW.shop === 'workshop' && ceoW.count === 1);
-  check('мастер переключить цех в боте не может (его цех — из профиля)', (await bot(db, 1001, 'staff_pending')).shop === 'factory');
+  check('мастер переключил цех в боте — это profiles.current_shop (та же настройка, что на сайте), staff_* показывают «Цех»', (await bot(db, 1001, 'staff_pending')).shop === 'workshop' && (await admin(db, `select current_shop from profiles where id = $1`, [UIDS.master])).rows[0].current_shop === 'workshop');
+  await svc2(`select public.bot_staff_set_shop(1001, 'factory')`);
+  check('и обратно: переключил — на сайте (set_my_shop/профиль) тоже «Фабрика»', (await bot(db, 1001, 'staff_pending')).shop === 'factory' && (await admin(db, `select current_shop from profiles where id = $1`, [UIDS.master])).rows[0].current_shop === 'factory');
   const resolved = await (async () => {
     await db.query('reset role');
     await db.query('set role service_role');

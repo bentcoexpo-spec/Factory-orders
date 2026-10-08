@@ -18,7 +18,7 @@ import {
 import { isLang, type Lang, type MessageKey, t, both } from './i18n';
 import { displayLabel, fmtDate, formatWorkerStats, type Period, rangeFor, tashkentToday } from './stats';
 import { notifyWorkerDecision, workerMenu } from './notify';
-import { onStaffCallback, onStaffText, showStaffMenu } from './staff';
+import { notifyMastersOfRecord, onStaffCallback, onStaffText, showStaffMenu } from './staff';
 
 // Бот работников цеха (Этап 2): вход по ссылке с одобрением мастера,
 // «Добавить работу», «Моя статистика», исправление сегодняшних записей.
@@ -298,7 +298,7 @@ async function onQuantity(sb: SupabaseClient, tg: number, chatId: number, lang: 
 
 async function onConfirm(sb: SupabaseClient, tg: number, chatId: number, messageId: number, lang: Lang) {
   try {
-    const res = await rpc<{ label: string; is_whole: boolean; quantity: number }>(sb, 'bot_commit_draft', { p_tg: tg });
+    const res = await rpc<{ id: string; label: string; is_whole: boolean; quantity: number }>(sb, 'bot_commit_draft', { p_tg: tg });
     await editMessage(
       chatId,
       messageId,
@@ -308,6 +308,8 @@ async function onConfirm(sb: SupabaseClient, tg: number, chatId: number, message
       }),
       [[{ text: t(lang, 'add.again'), callback_data: 'more' }, { text: t(lang, 'add.fix'), callback_data: 'fix' }]]
     );
+    // Мастерам (из обоих цехов) — уведомление с кнопками подтверждения; сбой не мешает работнику.
+    await notifyMastersOfRecord(sb, res.id);
   } catch (err) {
     if (isDbError(err, 'no_draft')) return void (await editMessage(chatId, messageId, t(lang, 'err.stale')));
     if (
