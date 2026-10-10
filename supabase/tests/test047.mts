@@ -294,8 +294,8 @@ await say(W3, 'Третий Работник');
 const req3 = since(m, MASTER).at(-1)!;
 await press(MASTER, btn(req3, 'ap:'));
 const list3 = last(MASTER);
-check('в списке — свободный сотрудник своего цеха, без привязанных и без чужого цеха', list3.labels.some((l) => l === 'Свободный Сотрудник') && !list3.labels.some((l) => l.includes('Чужой') || l.includes('Алишер')), JSON.stringify(list3.labels));
-await press(MASTER, list3.buttons[list3.labels.indexOf('Свободный Сотрудник')]);
+check('в списке — свободный сотрудник своего цеха, без привязанных и без чужого цеха', list3.labels.some((l) => l.startsWith('Свободный Сотрудник')) && !list3.labels.some((l) => l.includes('Чужой') || l.includes('Алишер')), JSON.stringify(list3.labels));
+await press(MASTER, list3.buttons[list3.labels.findIndex((l) => l.startsWith('Свободный Сотрудник'))]);
 check('привязка к существующему: «Принят → сотрудник «Свободный Сотрудник»»', last(MASTER).text.includes('Свободный Сотрудник') && (await db.query(`select 1 from worker_bot_users where telegram_id = $1 and employee_id = $2 and status = 'active'`, [W3, freeEmp])).rows.length === 1, last(MASTER).text);
 check('новый сотрудник при этом не создан', (await db.query(`select count(*)::int as n from employees where name = 'Третий Работник'`)).rows[0].n === 0);
 

@@ -624,6 +624,7 @@ export interface CatalogModel {
   name: string;
   whole_rate: number | null;
   archived_at: string | null;
+  sort_order?: number | null;
 }
 
 export interface CatalogOperation {
@@ -632,6 +633,8 @@ export interface CatalogOperation {
   name: string;
   rate_per_piece: number;
   archived_at: string | null;
+  sort_order?: number | null;
+  created_at?: string;
 }
 
 // Ряд из attendance_view — отметка явки. Строка существует = сотрудник

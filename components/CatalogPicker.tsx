@@ -30,6 +30,7 @@ interface Group {
   name: string;
   variants: Variant[];
   opsTotal: number;
+  order: number; // порядок первого появления — изделия в порядке каталога (как у мастера)
 }
 
 type Step = { kind: 'models' } | { kind: 'professions'; key: string } | { kind: 'operations'; key: string; modelId: string };
@@ -67,11 +68,11 @@ export default function CatalogPicker({
     data.models.forEach((model) => {
       const professionName = profName.get(model.profession_id);
       if (!professionName) return; // модель скрытой профессии
-      const ops = data.operations.filter((o) => o.model_id === model.id).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+      const ops = data.operations.filter((o) => o.model_id === model.id); // порядок — как пришёл из базы (как у мастера)
       const hasWhole = Number(model.whole_rate ?? 0) > 0;
       if (ops.length === 0 && !hasWhole) return; // пустую модель выбрать не из чего
       const key = norm(model.name);
-      const g = map.get(key) ?? { key, name: model.name.trim(), variants: [], opsTotal: 0 };
+      const g = map.get(key) ?? { key, name: model.name.trim(), variants: [], opsTotal: 0, order: map.size };
       g.variants.push({ model, professionId: model.profession_id, professionName, ops, hasWhole });
       g.opsTotal += ops.length;
       map.set(key, g);
@@ -86,7 +87,7 @@ export default function CatalogPicker({
             a.professionName.localeCompare(b.professionName, 'ru')
         ),
       }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+      .sort((a, b) => a.order - b.order);
   }, [data, profName, employeeProfessionId]);
 
   const groupByKey = useMemo(() => new Map(groups.map((g) => [g.key, g])), [groups]);
